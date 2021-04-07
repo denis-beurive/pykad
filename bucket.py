@@ -1,6 +1,6 @@
 from operator import attrgetter
 from typing import Dict, Union, Optional, List, Tuple
-from peer import Peer
+from peer_data import PeerData
 from kad_types import PeerId
 
 
@@ -8,7 +8,7 @@ class Bucket:
 
     def __init__(self, size_limit: int):
         self.__size_limit = size_limit
-        self.__peers: Dict[PeerId, Peer] = dict()
+        self.__peers: Dict[PeerId, PeerData] = dict()
 
     def contains_peer(self, identifier: PeerId) -> bool:
         return identifier in self.__peers
@@ -16,10 +16,10 @@ class Bucket:
     def count(self) -> int:
         return len(self.__peers)
 
-    def get_all_peers(self) -> List[Peer]:
+    def get_all_peers(self) -> List[PeerData]:
         return list(self.__peers.values())
 
-    def get_closest_peers(self, peer_id: PeerId, count: int) -> List[Peer]:
+    def get_closest_peers(self, peer_id: PeerId, count: int) -> List[PeerData]:
         """
         Return the closest peers to a peer identified by its given identifier.
         :param peer_id: the identifier of the peer used as reference.
@@ -31,7 +31,7 @@ class Bucket:
             return []
         return sorted(self.__peers.values(), key=lambda peer: peer.identifier ^ peer_id)[0:count]
 
-    def add_peer(self, peer: Peer) -> Tuple[bool, bool]:
+    def add_peer(self, peer: PeerData) -> Tuple[bool, bool]:
         """
         Add a peer to the bucket.
         :param peer: the peer to add.
@@ -48,18 +48,18 @@ class Bucket:
         self.__peers[peer.identifier] = peer
         return True, False
 
-    def remove_peer(self, peer: Union[int, Peer]) -> None:
-        identifier = peer.identifier if isinstance(peer, Peer) else peer
+    def remove_peer(self, peer: Union[int, PeerData]) -> None:
+        identifier = peer.identifier if isinstance(peer, PeerData) else peer
         if not self.contains_peer(peer.identifier):
             raise Exception('Unexpected identifier "{0:%d}"'.format(identifier))
         del self.__peers[identifier]
 
-    def most_recent(self) -> Optional[Peer]:
+    def most_recent(self) -> Optional[PeerData]:
         if len(self.__peers):
             return sorted(self.__peers.values(), key=attrgetter('inserted_timestamp'))[-1]
         return None
 
-    def oldest(self) -> Optional[Peer]:
+    def oldest(self) -> Optional[PeerData]:
         if len(self.__peers):
             return sorted(self.__peers.values(), key=attrgetter('inserted_timestamp'))[0]
         return None

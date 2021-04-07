@@ -1,7 +1,7 @@
 from typing import Tuple, Optional, List
 from config import Config
 from bucket import Bucket
-from peer import Peer
+from peer_data import PeerData
 from kad_types import PeerId, BucketMask, BucketIndex
 
 
@@ -79,7 +79,7 @@ class RoutingTable:
                 break
         return index
 
-    def add_peer(self, peer: Peer) -> Tuple[bool, bool, BucketIndex]:
+    def add_peer(self, peer: PeerData) -> Tuple[bool, bool, BucketIndex]:
         """
         Add a peer to the routing table.
         :param peer: the peer to add. Please note that this peer must not be the local peer!
@@ -104,7 +104,7 @@ class RoutingTable:
         added, already_in = self.__lists[bucket_index].add_peer(peer)
         return added, already_in, BucketIndex(bucket_index)
 
-    def lookup(self, destination_peer_id: PeerId) -> Optional[Peer]:
+    def lookup(self, destination_peer_id: PeerId) -> Optional[PeerData]:
         """
         Lookup the Kademlia P2P network for a given peer identified by its given ID.
         :param destination_peer_id: the ID of the peer to lookup.
@@ -112,7 +112,7 @@ class RoutingTable:
         """
         # Get the bucket that contains the peers in the same sub-tree that the peer to look for.
         bucket_index = self.__find_bucket_index(destination_peer_id)
-        closest: List[Peer] = self.__lists[bucket_index].get_closest_peers(destination_peer_id, self.__alpha)
+        closest: List[PeerData] = self.__lists[bucket_index].get_closest_peers(destination_peer_id, self.__alpha)
         return None
 
     def __repr__(self) -> str:

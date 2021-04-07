@@ -1,7 +1,7 @@
 from config import Config
 from bucket import Bucket
 from routing_table import RoutingTable
-from peer import Peer
+from peer_data import PeerData
 from kad_types import PeerId
 
 conf: Config = Config(list_size=5, id_length=8, alpha=3)
@@ -16,5 +16,5 @@ tr: RoutingTable = RoutingTable(local_peer_id, conf)
 for i in range(255):
     if i == local_peer_id:
         continue
-    tr.add_peer(Peer(PeerId(i), i))
+    tr.add_peer(PeerData(PeerId(i), i))
 print(tr)

@@ -1,9 +1,9 @@
 from typing import NewType
 
-PeerId = NewType("PeerId", int)
+NodeId = NewType("NodeId", int)
 BucketMask = NewType("BucketMask", int)
 BucketIndex = NewType("BucketIndex", int)
 MessageId = NewType("MessageId", int)
-
+Timestamp = NewType("Timestamp", int)
 
 

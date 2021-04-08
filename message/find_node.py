@@ -1,26 +1,26 @@
-from kad_types import PeerId, MessageId
+from kad_types import NodeId, MessageId
 from message.message import Message, MessageType
 
 
 class FindNode(Message):
 
-    def __init__(self, sender_id: PeerId, message_id: MessageId, peer_id: PeerId):
-        self.__peer_id = peer_id
+    def __init__(self, sender_id: NodeId, message_id: MessageId, node_id: NodeId):
+        self.__node_id = node_id
         super().__init__(message_id, MessageType.FIND_NODE, sender_id)
 
     @property
-    def peer_id(self) -> PeerId:
+    def node_id(self) -> NodeId:
         """
-        Get the ID of the peer to find.
-        :return: the ID of the peer to find.
+        Get the ID of the node to find.
+        :return: the ID of the node to find.
         """
-        return self.__peer_id
+        return self.__node_id
 
-    @peer_id.setter
-    def peer_id(self, value: PeerId) -> None:
+    @node_id.setter
+    def node_id(self, value: NodeId) -> None:
         """
-        Set the ID of the peer to find.
-        :param value: the ID of the peer to find.
+        Set the ID of the node to find.
+        :param value: the ID of the node to find.
         """
-        self.__peer_id = value
+        self.__node_id = value
 

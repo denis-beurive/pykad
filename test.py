@@ -2,9 +2,9 @@ from typing import List
 from kad_config import KadConfig
 from bucket import Bucket
 from routing_table import RoutingTable
-from peer_data import PeerData
-from kad_types import PeerId
-from peer import Peer
+from node_data import NodeData
+from kad_types import NodeId
+from node import Node
 from time import sleep
 from queue_manager import QueueManager
 
@@ -12,22 +12,23 @@ from queue_manager import QueueManager
 conf: KadConfig = KadConfig(list_size=5, id_length=8, alpha=3)
 queue_manager = QueueManager()
 
-origin = Peer(PeerId(0), conf, queue_manager)
-peer1 = Peer(PeerId(1), conf, queue_manager, origin=origin.data)
-peer2 = Peer(PeerId(2), conf, queue_manager, origin=origin.data)
-peer3 = Peer(PeerId(3), conf, queue_manager, origin=origin.data)
+origin_id: NodeId = NodeId(0)
+origin = Node(NodeId(origin_id), conf, queue_manager)
+node1 = Node(NodeId(1), conf, queue_manager, origin=origin_id)
+node2 = Node(NodeId(2), conf, queue_manager, origin=origin_id)
+node3 = Node(NodeId(3), conf, queue_manager, origin=origin_id)
 
-peers: List[Peer] = [origin, peer1, peer2, peer3]
+nodes: List[Node] = [origin, node1, node2, node3]
 
-for peer in peers:
-    peer.run()
+for node in nodes:
+    node.run()
     sleep(1)
 
-for peer in peers:
-    peer.join(timeout=4)
+for node in nodes:
+    node.join(timeout=4)
 
-for peer in peers:
-    peer.terminate()
+for node in nodes:
+    node.terminate()
 
 print("Done")
 

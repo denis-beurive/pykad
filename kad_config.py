@@ -2,17 +2,17 @@
 class KadConfig:
 
     def __init__(self, list_size=20, id_length=128, alpha=3):
-        self.__list_size: int = list_size
+        self.__bucket_size: int = list_size
         self.__id_length: int = id_length
         self.__alpha: int = alpha
 
     @property
-    def list_size(self) -> int:
-        return self.__list_size
+    def bucket_size(self) -> int:
+        return self.__bucket_size
 
-    @list_size.setter
-    def list_size(self, value: int) -> None:
-        self.__list_size = value
+    @bucket_size.setter
+    def bucket_size(self, value: int) -> None:
+        self.__bucket_size = value
 
     @property
     def id_length(self) -> int:

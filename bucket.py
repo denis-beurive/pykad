@@ -16,8 +16,11 @@ class Bucket:
     def count(self) -> int:
         return len(self.__peers)
 
-    def get_all_peers(self) -> List[PeerData]:
+    def get_all_peer_data(self) -> List[PeerData]:
         return list(self.__peers.values())
+
+    def get_all_peer_ids(self) -> List[PeerId]:
+        return [p.identifier for p in self.__peers.values()]
 
     def get_closest_peers(self, peer_id: PeerId, count: int) -> List[PeerData]:
         """

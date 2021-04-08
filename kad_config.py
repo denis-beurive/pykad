@@ -1,5 +1,5 @@
 
-class Config:
+class KadConfig:
 
     def __init__(self, list_size=20, id_length=128, alpha=3):
         self.__list_size: int = list_size

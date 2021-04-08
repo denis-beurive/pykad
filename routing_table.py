@@ -1,5 +1,5 @@
-from typing import Tuple, Optional, List
-from config import Config
+from typing import Tuple, List
+from kad_config import KadConfig
 from bucket import Bucket
 from peer_data import PeerData
 from kad_types import PeerId, BucketMask, BucketIndex
@@ -7,13 +7,13 @@ from kad_types import PeerId, BucketMask, BucketIndex
 
 class RoutingTable:
 
-    def __init__(self, identifier: PeerId, config: Config):
+    def __init__(self, identifier: PeerId, config: KadConfig):
         self.__list_size = config.list_size
         self.__id_length = config.id_length
         self.__alpha = config.alpha
         self.__identifier = identifier
-        self.__lists: Tuple[Bucket] = tuple(Bucket(config.list_size) for _ in range(config.id_length))
-        self.__side_lists: Tuple[Bucket] = tuple(Bucket(config.list_size) for _ in range(config.id_length))
+        self.__buckets: Tuple[Bucket] = tuple(Bucket(config.list_size) for _ in range(config.id_length))
+        self.__side_buckets: Tuple[Bucket] = tuple(Bucket(config.list_size) for _ in range(config.id_length))
         self.__bucket_masks: Tuple[BucketMask] = self.__init_bucket_masks()
 
     def __init_bucket_masks(self) -> Tuple[BucketMask]:
@@ -87,7 +87,7 @@ class RoutingTable:
         - the first value tells whether the peer has been added to the routing table or not. The value True means that
           the peer has been added to the routing table. The value False means that the peer has not been added to the
           routing table.
-        - in case the peer has not been added to the routing table (the first value is True), the second value tells
+        - in case the peer has not been added to the routing table (the first value is False), the second value tells
           whether the peer was already present in the routing table or not. The value True means that the peer was
           already present in the routing table.
         - the third value represents the index of the bucket in which the peer has been added to, or would have been
@@ -101,19 +101,31 @@ class RoutingTable:
         # Indeed, the only peer that cannot be added to the routing table is the local peer.
         # Yet, this case has already been handled.
         bucket_index = self.__find_bucket_index(peer.identifier)
-        added, already_in = self.__lists[bucket_index].add_peer(peer)
+        added, already_in = self.__buckets[bucket_index].add_peer(peer)
         return added, already_in, BucketIndex(bucket_index)
 
-    def lookup(self, destination_peer_id: PeerId) -> Optional[PeerData]:
+    def find_closest(self, peer_id: PeerId, count: int) -> List[PeerId]:
         """
-        Lookup the Kademlia P2P network for a given peer identified by its given ID.
-        :param destination_peer_id: the ID of the peer to lookup.
-        :return: If the request peer is found, then the method returns it. Otherwise, it returns the value None.
+        Find the closest peers to a given peer.
+        :param peer_id: the ID of the peer.
+        :param count: the maximum number of peer IDs to return.
+        :return: the list of peer IDs that are the closest ones to the given one.
         """
-        # Get the bucket that contains the peers in the same sub-tree that the peer to look for.
-        bucket_index = self.__find_bucket_index(destination_peer_id)
-        closest: List[PeerData] = self.__lists[bucket_index].get_closest_peers(destination_peer_id, self.__alpha)
-        return None
+        ids: List[PeerId] = []
+        for bucket in self.__buckets:
+            ids.extend(bucket.get_all_peer_ids())
+        return sorted(ids, key=lambda pid: peer_id ^ pid)[0: count]
+
+    # def lookup(self, destination_peer_id: PeerId) -> Optional[PeerData]:
+    #     """
+    #     Lookup the Kademlia P2P network for a given peer identified by its given ID.
+    #     :param destination_peer_id: the ID of the peer to lookup.
+    #     :return: If the request peer is found, then the method returns it. Otherwise, it returns the value None.
+    #     """
+    #     # Get the bucket that contains the peers in the same sub-tree that the peer to look for.
+    #     bucket_index = self.__find_bucket_index(destination_peer_id)
+    #     closest: List[PeerData] = self.__lists[bucket_index].get_closest_peers(destination_peer_id, self.__alpha)
+    #     return None
 
     def __repr__(self) -> str:
         """
@@ -127,10 +139,10 @@ class RoutingTable:
                                    (self.__id_length - i)).format(i, self.__bucket_masks[i], '.' * i, i))
         representation.append("  Bucket contents:")
         for i in range(self.__id_length):
-            bucket: Bucket = self.__lists[i]
+            bucket: Bucket = self.__buckets[i]
             representation.append("    {0:3d}: {1:3d} peer(s)".format(i, bucket.count()))
             if bucket.count():
-                for p in bucket.get_all_peers():
+                for p in bucket.get_all_peer_data():
                     representation.append('             {0:s}'.format(p.to_str(self.__id_length)))
         return "\n".join(representation)
 

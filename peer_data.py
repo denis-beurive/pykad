@@ -1,14 +1,12 @@
 from typing import Optional
 from kad_types import PeerId
-from queue import Queue
 
 
 class PeerData:
 
-    def __init__(self, identifier: PeerId, registration_date: Optional[int] = None, queue: Optional[Queue] = None):
+    def __init__(self, identifier: PeerId, registration_date: Optional[int] = None):
         self.__identifier: PeerId = identifier
         self.__registration_date: Optional[int] = registration_date
-        self.__queue: Queue = queue
 
     @property
     def identifier(self) -> PeerId:
@@ -25,14 +23,6 @@ class PeerData:
     @registration_date.setter
     def registration_date(self, timestamp: Optional[int]) -> None:
         self.__registration_date = timestamp
-
-    @property
-    def queue(self) -> Queue:
-        return self.__queue
-
-    @queue.setter
-    def queue(self, value: Optional[Queue]) -> None:
-        self.__queue = value
 
     def to_str(self, id_length) -> str:
         return ('(0xb{0:0%db}, {1:d})' % id_length).format(self.__identifier, self.__registration_date)

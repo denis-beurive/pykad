@@ -22,7 +22,7 @@ The _local node_ pings the least recently node.
 
 * If the least responds to the ping, then it is moved to the tail of the k-bucket (since it becomes the most recently
   seen node).
-* If the least does not respond to the ping, then it is evicted from the k-bucket and _node1_ is inserted to the end
+* If the least does not respond to the ping, then it is evicted from the k-bucket and _node1_ is inserted to the tail
   of the k-bucket.
   
 ![](images/k-bucket-4.png)

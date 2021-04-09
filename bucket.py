@@ -3,6 +3,8 @@ from typing import Dict, Union, Optional, List, Tuple
 from node_data import NodeData
 from kad_types import NodeId
 from threading import RLock
+from math import ceil
+from time import time
 
 
 class Bucket:
@@ -65,11 +67,15 @@ class Bucket:
             self.__nodes[node_data.identifier] = node_data
             return True, False
 
-    def remove_node(self, node: Union[int, NodeData]) -> None:
+    def remove_node(self, node: Union[NodeId, NodeData]) -> None:
+        """
+        Evict a node from the bucket.
+        :param node: the node, or node iD, to evict.
+        """
         with self.__lock:
             identifier = node.identifier if isinstance(node, NodeData) else node
-            if not self.contains_node(node.identifier):
-                raise Exception('Unexpected node identifier "{0:%d}". It should be in the k-bucket.'.format(identifier))
+            if not self.contains_node(identifier):
+                raise Exception('Unexpected node identifier "{0:d}". It should be in the k-bucket.'.format(identifier))
             del self.__nodes[identifier]
 
     def get_most_recently_seen(self) -> Optional[NodeId]:
@@ -95,6 +101,11 @@ class Bucket:
                 data = sorted(self.__nodes.values(), key=attrgetter('last_seen_date'))[0]
                 return data.identifier
             return None
+
+    def set_least_recently_seen(self, node_id: NodeId) -> None:
+        with self.__lock:
+            if node_id in self.__nodes:
+                self.__nodes[node_id].last_seen_date = ceil(time())
 
     def __str__(self) -> str:
         with self.__lock:

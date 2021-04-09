@@ -1,13 +1,17 @@
 from typing import Optional, Dict, Callable
 from threading import Thread
 from queue import Queue
-from kad_types import NodeId, MessageId
+from time import time
+from math import ceil
+from kad_types import NodeId, MessageId, Timestamp
 from node_data import NodeData
 from kad_config import KadConfig
 from routing_table import RoutingTable
 from message.find_node import FindNode
 from message.find_node_response import FindNodeResponse
 from message.terminate_node import TerminateNode
+from message.ping_node import PingNode
+from message.ping_node_reponse import PingNodeResponse
 from message.message import generate_message_id, MessageType, Message
 from queue_manager import QueueManager
 from message_supervisor.ping import Ping as PingSupervisor
@@ -37,7 +41,9 @@ class Node:
         self.__messages_processor: Dict[MessageType, Callable] = {
             MessageType.TERMINATE_NODE: self.process_terminate_node,
             MessageType.FIND_NODE: self.process_find_node,
-            MessageType.FIND_NODE_RESPONSE: self.process_find_node_response
+            MessageType.FIND_NODE_RESPONSE: self.process_find_node_response,
+            MessageType.PING_NODE: self.process_ping,
+            MessageType.PING_NODE_RESPONSE: self.process_ping_response
         }
 
     ####################################################################################################################
@@ -61,9 +67,22 @@ class Node:
     # Callbacks executed if a message does not get any response                                                        #
     ####################################################################################################################
 
-    def __ping_no_response(self, replacement_node_id: NodeId) -> None:
-        print("{0:04d}> Execute the callback function for PING messages. Replacement node is: {1:d}".format(
-            self.__node_id, replacement_node_id))
+    def __ping_no_response(self, message: PingNode, replacement_node_id: NodeId) -> None:
+        """
+        Treat the absence of response from a node. Please note that if a node failed to respond to a PING, then it
+        is evicted from the k-bucket and it is replaced by the most recently seen node.
+        :param message: the PING message. Please keep in mind that this message is the one that has been sent by
+        the local node! This is **NOT** a received message. Thus, the node to evict is the target node!
+        :param replacement_node_id: the ID of the node that must be used to replace the node that does not respond to the PING.
+        """
+        print("{0:04d}> Execute the callback function for PING messages (no response). "
+              "{1:s}. Replacement node: {2:d}".format(self.__node_id, message.to_str(), replacement_node_id))
+        # Please keep in mind that this message is the one that has been sent by the local node! This is
+        # **NOT** a received message. Thus, the node to evict is the target node!
+
+        node_to_evict: NodeId = message.node_id
+        self.__routing_table.evict_node(node_to_evict)
+        self.__routing_table.add_node(replacement_node_id)
 
     ####################################################################################################################
 
@@ -101,9 +120,10 @@ class Node:
     ####################################################################################################################
 
     def process_terminate_node(self, message: TerminateNode) -> bool:
-        print("{0:04d}> [{1:08}] Terminate.".format(self.__node_id, message.message_id))
+        print("{0:04d}> [{1:08d}] Terminate.".format(self.__node_id, message.message_id))
         self.__queue_manager.del_queue(self.__node_id)
         self.__ping_supervisor.stop()
+        print("{0:04d}> [{1:08d}] Terminate DONE!".format(self.__node_id, message.message_id))
         return False
 
     def process_find_node(self, message: FindNode) -> bool:
@@ -122,7 +142,7 @@ class Node:
         sender_id = message.sender_id
         message_id = message.message_id
         sender_queue = self.__queue_manager.get_queue(sender_id)
-        print("{0:04d}> [{1:08}] Process FIND_NODE from {2:d}.".format(self.__node_id, message_id, sender_id))
+        print("{0:04d}> [{1:08d}] Process FIND_NODE from {2:d}.".format(self.__node_id, message_id, sender_id))
 
         # Forge a response with the same message ID and send it.
         closest = self.__routing_table.find_closest(message.node_id, self.__config.id_length)
@@ -131,17 +151,45 @@ class Node:
 
         # Add the sender ID to the routing table.
         added, already_in, bucket_idx = self.__routing_table.add_node(sender_id)
-        print("{0:04d}> [{1:08}] Node added: <{2:s}>.".format(self.__node_id,
-                                                              message_id,
-                                                              "yes" if added else "no"))
+        print("{0:04d}> [{1:08d}] Node added: <{2:s}>.".format(self.__node_id,
+                                                               message_id,
+                                                               "yes" if added else "no"))
         if not added and not already_in:
             # The node was not added because the bucket if full.
             # We ping the least recently node.
-            pass
+            least_recently_seen_node_id: NodeId = self.__routing_table.get_least_recently_seen(bucket_idx)
+            message = PingNode(self.__node_id, generate_message_id(), least_recently_seen_node_id)
+            target_queue: Queue = self.__queue_manager.get_queue(least_recently_seen_node_id)
+            if target_queue is None:
+                print("{0:04d}> [{1:08d}] The queue for node {2:d} does not exist.".format(self.__node_id,
+                                                                                           message_id,
+                                                                                           least_recently_seen_node_id))
+                self.__ping_no_response(message)
+                return True
+            print("{0:04d}> [{1:08d}] {2:s}".format(self.__node_id, message_id, message.to_str()))
+            target_queue.put(message)
+            self.__ping_supervisor.add(message, Timestamp(ceil(time())), sender_id)
         return True
 
     def process_find_node_response(self, message: FindNodeResponse) -> bool:
-        print("{0:04d}> [{1:08}] Process FIND_NODE_RESPONSE.".format(self.__node_id, message.message_id))
+        print("{0:04d}> [{1:08d}] Process FIND_NODE_RESPONSE from {2:d}.".format(self.__node_id,
+                                                                                 message.message_id,
+                                                                                 message.sender_id))
         nodes_ids = message.node_ids
-        print("{0:04d}> [{1:08}] Nodes count: {2:d}".format(self.__node_id, message.message_id, len(nodes_ids)))
+        print("{0:04d}> [{1:08d}] Nodes count: {2:d}".format(self.__node_id, message.message_id, len(nodes_ids)))
+        return True
+
+    def process_ping(self, message: PingNode) -> bool:
+        target_queue: Queue = self.__queue_manager.get_queue(message.sender_id)
+        if target_queue is None:
+            # The node disappeared. This should not happen in this simulation.
+            return True
+        target_queue.put(PingNodeResponse(self.__node_id, message.message_id))
+        return True
+
+    def process_ping_response(self, message: PingNodeResponse) -> bool:
+        print("{0:04d}> [{1:08d}] Process PING_NODE_RESPONSE from {2:d}.".format(self.__node_id,
+                                                                                 message.message_id,
+                                                                                 message.sender_id))
+        self.__routing_table.set_least_recently_seen(message.sender_id)
         return True

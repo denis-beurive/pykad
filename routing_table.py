@@ -14,10 +14,11 @@ class RoutingTable:
         self.__bucket_size = config.bucket_size
         self.__id_length = config.id_length
         self.__alpha = config.alpha
+        self.__k = config.k
         self.__identifier = identifier
         self.__lock = RLock()
-        self.__buckets: Tuple[Bucket] = tuple(Bucket(config.bucket_size) for _ in range(config.id_length))
-        self.__side_buckets: Tuple[Bucket] = tuple(Bucket(config.bucket_size) for _ in range(config.id_length))
+        self.__buckets: Tuple[Bucket] = tuple(Bucket(config.bucket_size) for _ in range(config.k))
+        self.__side_buckets: Tuple[Bucket] = tuple(Bucket(config.bucket_size) for _ in range(config.k))
         self.__bucket_masks: Tuple[BucketMask] = self.__init_bucket_masks()
 
     def __init_bucket_masks(self) -> Tuple[BucketMask]:
@@ -58,7 +59,7 @@ class RoutingTable:
 
         :return: the list of bucket masks.
         """
-        return tuple(BucketMask((self.__identifier >> i) ^ 1) for i in range(self.__id_length))
+        return tuple(BucketMask((self.__identifier >> i) ^ 1) for i in range(self.__k))
 
     @property
     def identifier(self) -> NodeId:
@@ -80,7 +81,7 @@ class RoutingTable:
         """
         with self.__lock:
             index: int = -1
-            for i in range(self.__id_length):
+            for i in range(self.__k):
                 if not (identifier >> i) ^ self.__bucket_masks[i]:
                     index = i
                     break
@@ -135,6 +136,32 @@ class RoutingTable:
         # The methods of class Bucket are synchronized.
         bucket: Bucket = self.__buckets[bucket_id]
         return bucket.get_least_recently_seen()
+
+    def set_least_recently_seen(self, node_id: NodeId, bucket_idx: Optional[int] = None) -> None:
+        """
+        Declare a given node as the least recently seen node.
+        :param node_id: the node ID to declare.
+        :param bucket_idx: the index of the bucket that contains the node.
+        If this parameter is not specified, then the method will find out the bucket index.
+        """
+        with self.__lock:
+            if not bucket_idx:
+                bucket_idx = self.__find_bucket_index(node_id)
+            bucket: Bucket = self.__buckets[bucket_idx]
+            bucket.set_least_recently_seen(node_id)
+
+    def evict_node(self, node_id: NodeId, bucket_idx: Optional[int] = None) -> None:
+        """
+        Evict a node from a bucket.
+        :param node_id: The ID of the node to evict.
+        :param bucket_idx: the index of the bucket that contains the node.
+        If this parameter is not specified, then the method will find out the bucket index.
+        """
+        with self.__lock:
+            if not bucket_idx:
+                bucket_idx = self.__find_bucket_index(node_id)
+            bucket: Bucket = self.__buckets[bucket_idx]
+            bucket.remove_node(node_id)
 
     def __repr__(self) -> str:
         """

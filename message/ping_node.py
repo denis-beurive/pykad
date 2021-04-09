@@ -32,3 +32,7 @@ class PingNode(Message):
         :param value: the ID of the node to ping.
         """
         self.__node_id = value
+
+    def to_str(self) -> str:
+        return "PING({0:08d}: {1:d} -> {2:d})".format(self.message_id, self.sender_id, self.node_id)
+

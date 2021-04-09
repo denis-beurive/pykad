@@ -136,7 +136,8 @@ class Node:
                                                               "yes" if added else "no"))
         if not added and not already_in:
             # The node was not added because the bucket if full.
-
+            # We ping the least recently node.
+            pass
         return True
 
     def process_find_node_response(self, message: FindNodeResponse) -> bool:

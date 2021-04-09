@@ -1,7 +1,7 @@
 from typing import Tuple, List, Optional
 from time import time
 from math import floor
-from threading import Lock
+from threading import RLock
 from kad_config import KadConfig
 from bucket import Bucket
 from node_data import NodeData
@@ -15,7 +15,7 @@ class RoutingTable:
         self.__id_length = config.id_length
         self.__alpha = config.alpha
         self.__identifier = identifier
-        self.__lock = Lock()
+        self.__lock = RLock()
         self.__buckets: Tuple[Bucket] = tuple(Bucket(config.bucket_size) for _ in range(config.id_length))
         self.__side_buckets: Tuple[Bucket] = tuple(Bucket(config.bucket_size) for _ in range(config.id_length))
         self.__bucket_masks: Tuple[BucketMask] = self.__init_bucket_masks()
@@ -62,11 +62,13 @@ class RoutingTable:
 
     @property
     def identifier(self) -> NodeId:
-        return self.__identifier
+        with self.__lock:
+            return self.__identifier
 
     @identifier.setter
     def identifier(self, value: NodeId) -> None:
-        self.__identifier = value
+        with self.__lock:
+            self.__identifier = value
 
     def __find_bucket_index(self, identifier: NodeId) -> int:
         """
@@ -76,12 +78,13 @@ class RoutingTable:
         Otherwise the method returns the value -1. Please note that the only node that cannot be stored into a bucket
         is the local node.
         """
-        index: int = -1
-        for i in range(self.__id_length):
-            if not (identifier >> i) ^ self.__bucket_masks[i]:
-                index = i
-                break
-        return index
+        with self.__lock:
+            index: int = -1
+            for i in range(self.__id_length):
+                if not (identifier >> i) ^ self.__bucket_masks[i]:
+                    index = i
+                    break
+            return index
 
     def add_node(self, node_id: NodeId) -> Tuple[bool, bool, BucketIndex]:
         """
@@ -110,11 +113,10 @@ class RoutingTable:
         # Please note: the returned value (bucket_index) is greater than or equal to zero.
         # Indeed, the only node that cannot be added to the routing table is the local peer.
         # Yet, this case has already been handled.
-        self.__lock.acquire()
-        bucket_index = self.__find_bucket_index(node_id)
-        added, already_in = self.__buckets[bucket_index].add_node(NodeData(node_id, last_seen_date=floor(time())))
-        self.__lock.release()
-        return added, already_in, BucketIndex(bucket_index)
+        with self.__lock:
+            bucket_index = self.__find_bucket_index(node_id)
+            added, already_in = self.__buckets[bucket_index].add_node(NodeData(node_id, last_seen_date=floor(time())))
+            return added, already_in, BucketIndex(bucket_index)
 
     def find_closest(self, node_id: NodeId, count: int) -> List[NodeId]:
         """
@@ -123,36 +125,34 @@ class RoutingTable:
         :param count: the maximum number of node IDs to return.
         :return: the list of node IDs that are the closest ones to the given one.
         """
-        self.__lock.acquire()
-        ids: List[NodeId] = []
-        for bucket in self.__buckets:
-            ids.extend(bucket.get_all_nodes_ids())
-        self.__lock.release()
-        return sorted(ids, key=lambda pid: node_id ^ pid)[0: count]
+        with self.__lock:
+            ids: List[NodeId] = []
+            for bucket in self.__buckets:
+                ids.extend(bucket.get_all_nodes_ids())
+            return sorted(ids, key=lambda pid: node_id ^ pid)[0: count]
 
-    def get_last_seen(self, bucket_id: int) -> Optional[NodeId]:
-        pass
-
-
+    def get_least_recently_seen(self, bucket_id: int) -> Optional[NodeId]:
+        # The methods of class Bucket are synchronized.
+        bucket: Bucket = self.__buckets[bucket_id]
+        return bucket.get_least_recently_seen()
 
     def __repr__(self) -> str:
         """
         Return a textual representation of the routing table.
         :return: a textual representation of the routing table.
         """
-        self.__lock.acquire()
-        representation: List[str] = [('RT for {0:0%db}' % self.__id_length).format(self.__identifier),
-                                     '  Bucket masks:']
-        for i in range(self.__id_length):
-            representation.append(("    {0:3d}: {1:0%db}{2:s} (test if ((id >> {3:03d}) ^ mask) == 0)" %
-                                   (self.__id_length - i)).format(i, self.__bucket_masks[i], '.' * i, i))
-        representation.append("  Bucket contents:")
-        for i in range(self.__id_length):
-            bucket: Bucket = self.__buckets[i]
-            representation.append("    {0:3d}: {1:3d} node(s)".format(i, bucket.count()))
-            if bucket.count():
-                for p in bucket.get_all_nodes_data():
-                    representation.append('             {0:s}'.format(p.to_str(self.__id_length)))
-        self.__lock.release()
-        return "\n".join(representation)
+        with self.__lock:
+            representation: List[str] = [('RT for {0:0%db}' % self.__id_length).format(self.__identifier),
+                                         '  Bucket masks:']
+            for i in range(self.__id_length):
+                representation.append(("    {0:3d}: {1:0%db}{2:s} (test if ((id >> {3:03d}) ^ mask) == 0)" %
+                                       (self.__id_length - i)).format(i, self.__bucket_masks[i], '.' * i, i))
+            representation.append("  Bucket contents:")
+            for i in range(self.__id_length):
+                bucket: Bucket = self.__buckets[i]
+                representation.append("    {0:3d}: {1:3d} node(s)".format(i, bucket.count()))
+                if bucket.count():
+                    for p in bucket.get_all_nodes_data():
+                        representation.append('             {0:s}'.format(p.to_str(self.__id_length)))
+            return "\n".join(representation)
 

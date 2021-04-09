@@ -11,7 +11,9 @@ def generate_message_id() -> MessageId:
 class MessageType(Enum):
     FIND_NODE = 0
     FIND_NODE_RESPONSE = 1
-    TERMINATE_NODE = 2
+    PING_NODE = 2
+    PING_NODE_RESPONSE = 3
+    TERMINATE_NODE = 4
 
 
 class Message:

@@ -1,6 +1,7 @@
 from typing import Tuple, List
 from time import time
 from math import floor
+from threading import Lock
 from kad_config import KadConfig
 from bucket import Bucket
 from node_data import NodeData
@@ -14,6 +15,7 @@ class RoutingTable:
         self.__id_length = config.id_length
         self.__alpha = config.alpha
         self.__identifier = identifier
+        self.__lock = Lock()
         self.__buckets: Tuple[Bucket] = tuple(Bucket(config.bucket_size) for _ in range(config.id_length))
         self.__side_buckets: Tuple[Bucket] = tuple(Bucket(config.bucket_size) for _ in range(config.id_length))
         self.__bucket_masks: Tuple[BucketMask] = self.__init_bucket_masks()
@@ -108,8 +110,10 @@ class RoutingTable:
         # Please note: the returned value (bucket_index) is greater than or equal to zero.
         # Indeed, the only node that cannot be added to the routing table is the local peer.
         # Yet, this case has already been handled.
+        self.__lock.acquire()
         bucket_index = self.__find_bucket_index(node_id)
         added, already_in = self.__buckets[bucket_index].add_node(NodeData(node_id, last_seen_date=floor(time())))
+        self.__lock.release()
         return added, already_in, BucketIndex(bucket_index)
 
     def find_closest(self, node_id: NodeId, count: int) -> List[NodeId]:
@@ -119,27 +123,19 @@ class RoutingTable:
         :param count: the maximum number of node IDs to return.
         :return: the list of node IDs that are the closest ones to the given one.
         """
+        self.__lock.acquire()
         ids: List[NodeId] = []
         for bucket in self.__buckets:
             ids.extend(bucket.get_all_nodes_ids())
+        self.__lock.release()
         return sorted(ids, key=lambda pid: node_id ^ pid)[0: count]
-
-    # def lookup(self, destination_peer_id: PeerId) -> Optional[PeerData]:
-    #     """
-    #     Lookup the Kademlia P2P network for a given peer identified by its given ID.
-    #     :param destination_peer_id: the ID of the peer to lookup.
-    #     :return: If the request peer is found, then the method returns it. Otherwise, it returns the value None.
-    #     """
-    #     # Get the bucket that contains the peers in the same sub-tree that the peer to look for.
-    #     bucket_index = self.__find_bucket_index(destination_peer_id)
-    #     closest: List[PeerData] = self.__lists[bucket_index].get_closest_peers(destination_peer_id, self.__alpha)
-    #     return None
 
     def __repr__(self) -> str:
         """
         Return a textual representation of the routing table.
         :return: a textual representation of the routing table.
         """
+        self.__lock.acquire()
         representation: List[str] = [('RT for {0:0%db}' % self.__id_length).format(self.__identifier),
                                      '  Bucket masks:']
         for i in range(self.__id_length):
@@ -152,5 +148,6 @@ class RoutingTable:
             if bucket.count():
                 for p in bucket.get_all_nodes_data():
                     representation.append('             {0:s}'.format(p.to_str(self.__id_length)))
+        self.__lock.release()
         return "\n".join(representation)
 

@@ -10,7 +10,7 @@ from message.find_node_response import FindNodeResponse
 from message.terminate_node import TerminateNode
 from message.message import generate_message_id, MessageType, Message
 from queue_manager import QueueManager
-from ping_db import PingDb
+from message_supervisor.ping import Ping as PingSupervisor
 
 
 class Node:
@@ -30,7 +30,7 @@ class Node:
         self.__queue_manager.add_queue(self.__node_id, self.__input_queue)
         self.__listener_thread: Thread = Thread(target=self.__listener, args=[])
         self.__cron_thread: Thread = Thread(target=self.__cron, args=[])
-        self.__ping_dg: PingDb = PingDb()
+        self.__ping_supervisor = PingSupervisor(self.__ping_no_response)
         if not self.__is_origin:
             self.__routing_table.add_node(self.__origin)
         # This property associates a type of message with a method (used to process it).
@@ -56,6 +56,14 @@ class Node:
         if not self.__is_origin:
             print("{0:04d}> Bootstrap".format(self.__node_id))
             self.bootstrap()
+
+    ####################################################################################################################
+    # Callbacks executed if a message does not get any response                                                        #
+    ####################################################################################################################
+
+    def __ping_no_response(self, replacement_node_id: NodeId) -> None:
+        print("{0:04d}> Execute the callback function for PING messages. Replacement node is: {1:d}".format(
+            self.__node_id, replacement_node_id))
 
     ####################################################################################################################
 
@@ -92,12 +100,19 @@ class Node:
 
     def process_terminate_node(self, message: TerminateNode) -> bool:
         print("{0:04d}> [{1:08}] Terminate.".format(self.__node_id, message.message_id))
-        self.__ping_dg.stop()
+        self.__ping_supervisor.stop()
         return False
 
     def process_find_node(self, message: FindNode) -> bool:
         """
-        Process a message of type FIND_NODE.
+        Process a message of type FIND_NODE[target_node_id].
+
+        This message is emitted by a (sender) node that needs to locate a specific node identified by its ID
+        "target_node_id". The message recipient responds by sending the "k" closest nodes to "target_node_id"
+        he knows about.
+
+        The message recipient adds the sender node to its routing table.
+
         :param message: the message to process.
         :return: always True (which means "do not stop the node").
         """

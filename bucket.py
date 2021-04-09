@@ -5,6 +5,12 @@ from kad_types import NodeId
 
 
 class Bucket:
+    """
+    This class implements a bucket.
+
+    WARNING: objects of this class should **NOT** be instantiated directly by the library user!
+    Indeed, access to shared data structures are **not synchronized** within this component.
+    """
 
     def __init__(self, size_limit: int):
         self.__size_limit = size_limit

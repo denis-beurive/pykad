@@ -1,6 +1,7 @@
 from typing import Dict, Optional
 from queue import Queue
 from kad_types import NodeId
+from threading import Lock
 
 
 class QueueManager:
@@ -13,12 +14,24 @@ class QueueManager:
     """
 
     def __init__(self):
+        self.__lock = Lock()
         self.__queues: Dict[NodeId, Queue] = {}
 
     def add_queue(self, node_id: NodeId, queue: Queue) -> None:
+        self.__lock.acquire()
         self.__queues[node_id] = queue
+        self.__lock.release()
 
     def get_queue(self, node_id: NodeId) -> Optional[Queue]:
+        self.__lock.acquire()
+        node: Optional[Queue] = None
         if node_id in self.__queues:
-            return self.__queues[node_id]
-        return None
+            node = self.__queues[node_id]
+        self.__lock.release()
+        return node
+
+    def del_queue(self, node_id: NodeId) -> None:
+        self.__lock.acquire()
+        if node_id in self.__queues:
+            del self.__queues[node_id]
+        self.__lock.release()

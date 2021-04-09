@@ -97,9 +97,12 @@ class Node:
         return message_id
 
     ####################################################################################################################
+    # Message processor                                                                                                #
+    ####################################################################################################################
 
     def process_terminate_node(self, message: TerminateNode) -> bool:
         print("{0:04d}> [{1:08}] Terminate.".format(self.__node_id, message.message_id))
+        self.__queue_manager.del_queue(self.__node_id)
         self.__ping_supervisor.stop()
         return False
 
@@ -131,6 +134,9 @@ class Node:
         print("{0:04d}> [{1:08}] Node added: <{2:s}>.".format(self.__node_id,
                                                               message_id,
                                                               "yes" if added else "no"))
+        if not added and not already_in:
+            # The node was not added because the bucket if full.
+
         return True
 
     def process_find_node_response(self, message: FindNodeResponse) -> bool:

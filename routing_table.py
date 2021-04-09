@@ -1,4 +1,4 @@
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 from time import time
 from math import floor
 from threading import Lock
@@ -129,6 +129,11 @@ class RoutingTable:
             ids.extend(bucket.get_all_nodes_ids())
         self.__lock.release()
         return sorted(ids, key=lambda pid: node_id ^ pid)[0: count]
+
+    def get_last_seen(self, bucket_id: int) -> Optional[NodeId]:
+        pass
+
+
 
     def __repr__(self) -> str:
         """

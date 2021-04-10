@@ -108,8 +108,7 @@ class Message:
         queue.put(self)
 
     def csv(self) -> str:
-        return "|".join(["MESSAGE",
-                         self.message_type_str(),
-                         "{:d}".format(self.__message_id),
+        return "|".join([self.message_type_str(),
+                         "{:08x}".format(self.__message_id),
                          "{:s}".format("None" if self.__sender_id is None else "{:d}".format(self.__sender_id)),
                          "{:d}".format(self.__recipient_id)])

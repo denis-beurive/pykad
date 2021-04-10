@@ -6,14 +6,14 @@ from time import sleep
 from logger import Logger
 
 
-Logger.init("kad.log")
+Logger.init("kad.txt")
 conf: KadConfig = KadConfig(list_size=5, id_length=8, alpha=3, k=3)
 
 origin_id: NodeId = NodeId(0)
 origin = Node(NodeId(origin_id), conf)
 
 nodes: List[Node] = [origin]
-nodes.extend([Node(NodeId(i), conf, origin=origin_id) for i in range(1, 15)])
+nodes.extend([Node(NodeId(i), conf, origin=origin_id) for i in range(1, 10)])
 
 for node in nodes:
     node.run()

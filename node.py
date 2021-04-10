@@ -63,7 +63,7 @@ class Node:
         while True:
             print("{0:04d}> Wait for a message...".format(self.__local_node_id))
             message: Message = self.__input_queue.get()
-            self.log(message.csv())
+            self.log("M|R|" + message.csv())
             processor: Callable = self.__messages_processor[message.message_type]
 
             with self.__connected_lock:
@@ -117,6 +117,7 @@ class Node:
 
     def terminate(self):
         message = TerminateNode(self.__local_node_id, Message.get_new_id())
+        self.log("M|S|" + message.csv())
         message.send()
 
     def log(self, message: str) -> None:
@@ -132,6 +133,7 @@ class Node:
         if self.__is_origin:
             raise Exception("Unexpected error: the origin does not boostrap! You have an error in your code.")
         message = FindNode(self.__local_node_id, self.__origin, Message.get_new_id(), self.__local_node_id)
+        self.log("M|S|" + message.csv())
         message.send()
         return message.message_id
 
@@ -177,6 +179,7 @@ class Node:
         # Forge a response with the same message ID and send it.
         closest = self.__routing_table.find_closest(message.node_id, self.__config.id_length)
         response = FindNodeResponse(self.__local_node_id, sender_id, message_id, closest)
+        self.log("M|S|" + response.csv())
         response.send()
 
         # Add the sender ID to the routing table.
@@ -199,6 +202,7 @@ class Node:
                 self.__ping_no_response(message, sender_id)
                 return True
             print("{0:04d}> [{1:08d}] {2:s}".format(self.__local_node_id, message_id, message.to_str()))
+            self.log("M|S|" + message.csv())
             message.send()
             self.__ping_supervisor.add(message, Timestamp(ceil(time())), sender_id)
         return True
@@ -217,6 +221,7 @@ class Node:
             # TERMINATE_NODE message.
             return True
         message = PingNodeResponse(self.__local_node_id, message.sender_id, message.message_id)
+        self.log("M|S|" + message.csv())
         message.send()
         return True
 

@@ -1,22 +1,19 @@
 from typing import List
 from kad_config import KadConfig
-from bucket import Bucket
-from routing_table import RoutingTable
-from node_data import NodeData
 from kad_types import NodeId
 from node import Node
 from time import sleep
-from queue_manager import QueueManager
+from logger import Logger
 
 
+Logger.init("kad.log")
 conf: KadConfig = KadConfig(list_size=5, id_length=8, alpha=3, k=3)
-queue_manager = QueueManager()
 
 origin_id: NodeId = NodeId(0)
-origin = Node(NodeId(origin_id), conf, queue_manager)
+origin = Node(NodeId(origin_id), conf)
 
 nodes: List[Node] = [origin]
-nodes.extend([Node(NodeId(i), conf, queue_manager, origin=origin_id) for i in range(1, 15)])
+nodes.extend([Node(NodeId(i), conf, origin=origin_id) for i in range(1, 15)])
 
 for node in nodes:
     node.run()

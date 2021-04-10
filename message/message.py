@@ -1,11 +1,7 @@
 from typing import Optional
 from kad_types import MessageId, NodeId
-from random import randint
 from enum import Enum
-
-
-def generate_message_id() -> MessageId:
-    return MessageId(randint(0, pow(10, 8)))
+from threading import Lock
 
 
 class MessageType(Enum):
@@ -17,6 +13,20 @@ class MessageType(Enum):
 
 
 class Message:
+    """
+    This class is the base class for all classes that implement messages.
+    All messages contains the following properties:
+    - a unique message ID.
+    - the type of the message.
+    - the ID of of the sender.
+
+    Please note that contrary to you may expect, the identity of the message recipient is not part of the message.
+    In a real-life implementation, it would certainly be the case. However, this code implements a simulator that uses
+    threads to implement nodes. Threads exchange data through queues. It would have been possible to specify a queue ID
+    """
+
+    __lock: Lock = Lock()
+    __id: int = 0
 
     def __init__(self, message_id: MessageId, message_type: MessageType, sender_id: Optional[NodeId] = None):
         """
@@ -30,6 +40,16 @@ class Message:
         self.__sender_id = sender_id
         self.__message_id = message_id
         self.__message_type = message_type
+
+    @staticmethod
+    def get_new_id() -> MessageId:
+        """
+        Generate a new unique message ID.
+        :return: a new unique message ID.
+        """
+        with Message.__lock:
+            Message.__id += 1
+            return MessageId(Message.__id)
 
     @property
     def sender_id(self) -> NodeId:

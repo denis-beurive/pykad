@@ -12,7 +12,7 @@ from message.find_node_response import FindNodeResponse
 from message.terminate_node import TerminateNode
 from message.ping_node import PingNode
 from message.ping_node_reponse import PingNodeResponse
-from message.message import generate_message_id, MessageType, Message
+from message.message import MessageType, Message
 from queue_manager import QueueManager
 from message_supervisor.ping import Ping as PingSupervisor
 
@@ -99,7 +99,7 @@ class Node:
         self.__cron_thread.join(timeout=timeout)
 
     def terminate(self):
-        self.__input_queue.put(TerminateNode(generate_message_id()))
+        self.__input_queue.put(TerminateNode(Message.get_new_id()))
 
     ####################################################################################################################
 
@@ -110,7 +110,7 @@ class Node:
         """
         if self.__is_origin:
             raise Exception("Unexpected error: the origin does not boostrap! You have an error in your code.")
-        message_id = generate_message_id()
+        message_id = Message.get_new_id()
         recipient_queue = self.__queue_manager.get_queue(self.__origin)
         recipient_queue.put(FindNode(self.__node_id, message_id, self.__node_id))
         return message_id
@@ -158,7 +158,7 @@ class Node:
             # The node was not added because the bucket if full.
             # We ping the least recently node.
             least_recently_seen_node_id: NodeId = self.__routing_table.get_least_recently_seen(bucket_idx)
-            message = PingNode(self.__node_id, generate_message_id(), least_recently_seen_node_id)
+            message = PingNode(self.__node_id, Message.get_new_id(), least_recently_seen_node_id)
             target_queue: Queue = self.__queue_manager.get_queue(least_recently_seen_node_id)
             if target_queue is None:
                 print("{0:04d}> [{1:08d}] The queue for node {2:d} does not exist.".format(self.__node_id,

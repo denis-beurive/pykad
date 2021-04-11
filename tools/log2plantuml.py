@@ -7,8 +7,8 @@ import argparse
 colors: Dict[str, str] = {
     "FIND_NODE": "#FF0000",
     "FIND_NODE_RESPONSE": "#FF0000",
-    "PING_NODE": "#00FF00",
-    "PING_NODE_RESPONSE": "#00FF00"
+    "PING_NODE": "#006400",
+    "PING_NODE_RESPONSE": "#006400"
 }
 
 

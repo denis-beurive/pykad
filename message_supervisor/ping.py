@@ -1,4 +1,4 @@
-from typing import List, Optional, Callable, Tuple
+from typing import Optional, Callable, Tuple
 from kad_types import MessageId, NodeId, Timestamp
 from message.ping_node import PingNode
 from message_supervisor.message_supervisor import MessageSupervisor
@@ -55,3 +55,7 @@ class Ping(MessageSupervisor):
         # Second element: the function to execute if the pinged node does not respond.
         data: Optional[Tuple[PingNode, Optional[NodeId]]] = super()._get(message_id, auto_remove)
         return None if data is None else data
+
+    def delete(self, message_id: MessageId) -> None:
+        super()._del(message_id)
+

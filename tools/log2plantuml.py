@@ -1,4 +1,4 @@
-from typing import List, Dict, NewType, Optional, Callable
+from typing import Dict, Optional
 import sys
 import sqlite3
 import argparse

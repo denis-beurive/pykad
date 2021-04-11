@@ -151,4 +151,5 @@ crashlytics-build.properties
 fabric.properties
 
 *.db
+kad.txt
 

@@ -27,6 +27,12 @@ class MessageSupervisor:
 
     def __cleaner(self) -> None:
         while True:
+
+            # Please note that you should wait prior to any other treatment.
+            # Indeed, if you look for unanswered messages immediately, then the
+
+            sleep(self.__clean_period)
+
             to_remove: List[MessageId] = []
             with self.__lock:
 
@@ -42,7 +48,6 @@ class MessageSupervisor:
                         post_process = Thread(target=self.__callback, args=args)
                         post_process.start()
 
-            sleep(self.__clean_period)
             with self.__lock:
                 again = self.__continue
             if not again:
@@ -56,15 +61,30 @@ class MessageSupervisor:
             self.__messages[message_id] = (expiration_timestamp, args)
 
     def _get(self, message_id: MessageId, auto_remove: bool) -> Optional[List[Any]]:
+        """
+        Get the arguments that must be given to a callback function designed to process an unanswered message.
+        :param message_id: the ID of the message that must be given to a callback function.
+        :param auto_remove: flag that tells whether the message should be suppressed from the message repository
+        or not once the arguments are returned. The value True triggers the suppression of the message.
+        :return: the arguments that must be given to the callback function designed to process the (unanswered) message.
+        """
         with self.__lock:
             data: Optional[List[Any]] = None
-            if message_id in self.__messages[message_id]:
+            if message_id in self.__messages:
                 data = self.__messages[message_id][1]
                 if auto_remove:
                     del self.__messages[message_id]
             return data
 
+    def _del(self, message_id: MessageId) -> None:
+        with self.__lock:
+            if message_id in self.__messages:
+                del self.__messages[message_id]
+
     def stop(self) -> None:
+        """
+        Stop the supervisor.
+        """
         with self.__lock:
             self.__continue = False
 

@@ -63,13 +63,14 @@ class RoutingTable:
 
     @property
     def identifier(self) -> NodeId:
-        with self.__lock:
-            return self.__identifier
-
-    @identifier.setter
-    def identifier(self, value: NodeId) -> None:
-        with self.__lock:
-            self.__identifier = value
+        """
+        Return the ID of the node that owns this routing table (that is: the ID of the local node).
+        :return: the ID of the node that owns this routing table.
+        """
+        # Please note: the value "self.__identifier" is set once for all during the node creation.
+        # And then its value is never modified. Thus, access to this property does not need to be
+        # synchronized.
+        return self.__identifier
 
     def __find_bucket_index(self, identifier: NodeId) -> int:
         """

@@ -53,7 +53,7 @@ nodes = ["entity node{0:d}".format(n[0]) for n in entry1]
 print("@startuml")
 print("\n".join(nodes))
 
-cursor1.execute("SELECT type, message_id, origin, recipient, message.args FROM message WHERE direction='S' ORDER BY message_id")
+cursor1.execute("SELECT type, message_id, origin, recipient, args FROM message WHERE direction='S' ORDER BY message_id")
 while True:
     entry1 = cursor1.fetchone()
     if entry1 is None:
@@ -62,6 +62,7 @@ while True:
     message_id = entry1[1]
     origin_id = entry1[2]
     recipient_id = entry1[3]
+    data = entry1[4]
 
     cursor2: sqlite3.Cursor = con.cursor()
     origin = get_node_name(cursor2, origin_id)
@@ -80,6 +81,13 @@ while True:
         print("node{0:d} -[{1:s}]>X node{2:d}: {3:s} [{4:d}]".format(origin, type2color(type), recipient, type, message_id))
     else:
         print("node{0:d} -[{1:s}]> node{2:d}: {3:s} [{4:d}]".format(origin, type2color(type), recipient, type, message_id))
+        if type == "FIND_NODE_RESPONSE":
+            print("rnote over node{0:d}: {1:s}".format(recipient, "no data" if data == "" else data))
+            # print("data: {0:s}".format(data))
+            # print("endrnode")
+
+
+
 print("@endtuml")
 print("# \"C:\\Program Files (x86)\\Common Files\\Oracle\\Java\\javapath\"\\java.exe -jar \"C:\\Users\\Denis BEURIVE\\Documents\\software\"\\plantuml.jar <file>")
 

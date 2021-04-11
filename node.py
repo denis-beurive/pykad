@@ -90,6 +90,7 @@ class Node:
             raise Exception("Unexpected error: the origin does not boostrap! You have an error in your code.")
         message = FindNode(self.__local_node_id, self.__origin, Message.get_new_id(), self.__local_node_id)
         self.log("M|S|" + message.csv())
+        self.log("\n".join(["RT[{}]: {}".format(self.__local_node_id, line) for line in self.__routing_table.dump()]))
         message.send()
         return message.message_id
 
@@ -108,6 +109,7 @@ class Node:
     def terminate(self):
         message = TerminateNode(self.__local_node_id, Message.get_new_id())
         self.log("M|S|" + message.csv())
+        self.log("\n".join(["RT[{}]: {}".format(self.__local_node_id, line) for line in self.__routing_table.dump()]))
         message.send()
 
     def log(self, message: str) -> None:
@@ -207,6 +209,7 @@ class Node:
             return
         print("{0:04d}> [{1:08d}] {2:s}".format(self.__local_node_id, message_id, message.to_str()))
         self.log("M|S|" + message.csv())
+        # self.log("\n".join(["RT[{}]: {}".format(self.__local_node_id, line) for line in self.__routing_table.dump()]))
         message.send()
         # Please don't forget to add the timeout duration to the timestamp
         # (expiration_data = nox + timeout_duration)
@@ -260,31 +263,9 @@ class Node:
         print("{0:04d}> [{1:08d}] Node added: <{2:s}>.".format(self.__local_node_id,
                                                                message_id,
                                                                "yes" if added else "no"))
-
+        self.log("\n".join(["RT[{}]: {}".format(self.__local_node_id, line) for line in self.__routing_table.dump()]))
         if not added and not already_in:
             self.__ping_for_replacement(bucket_idx, sender_id, message_id)
-
-        #     # The node was not added because the bucket if full.
-        #     # We ping the least recently node.
-        #     least_recently_seen_node_id: NodeId = self.__routing_table.get_least_recently_seen(bucket_idx)
-        #     message = PingNode(self.__local_node_id,
-        #                        least_recently_seen_node_id,
-        #                        Message.get_new_id())
-        #     target_queue: Queue = QueueManager.get_queue(least_recently_seen_node_id)
-        #     if target_queue is None:
-        #         print("{0:04d}> [{1:08d}] The queue for node {2:d} does not exist.".format(self.__local_node_id,
-        #                                                                                    message_id,
-        #                                                                                    least_recently_seen_node_id))
-        #         self.__ping_no_response(message, sender_id)
-        #         return True
-        #     print("{0:04d}> [{1:08d}] {2:s}".format(self.__local_node_id, message_id, message.to_str()))
-        #     self.log("M|S|" + message.csv())
-        #     message.send()
-        #     # Please don't forget to add the timeout duration to the timestamp
-        #     # (expiration_data = nox + timeout_duration)
-        #     self.__ping_supervisor.add(message,
-        #                                Timestamp(ceil(time()) + self.__config.message_ping_node_timeout),
-        #                                sender_id)
         return True
 
     def process_find_node_response(self, message: FindNodeResponse) -> bool:
@@ -299,6 +280,7 @@ class Node:
             added, already_in, bucket_idx = self.__routing_table.add_node(node_id)
             if not added and not already_in:
                 self.__ping_for_replacement(bucket_idx, node_id, message.message_id)
+        self.log("\n".join(["RT[{}]: {}".format(self.__local_node_id, line) for line in self.__routing_table.dump()]))
 
         # If this is the response to the initial FIND_NODE (used for bootstrap), then continue
         # the bootstrap sequence.
@@ -322,6 +304,8 @@ class Node:
                                    recipient_id=message.sender_id,
                                    message_id=message.message_id)
         self.log("M|S|" + message.csv())
+        # TODO: add the sender to the routing table.
+        # self.log("\n".join(["RT[{}]: {}".format(self.__local_node_id, line) for line in self.__routing_table.dump()]))
         message.send()
         return True
 

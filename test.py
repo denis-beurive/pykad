@@ -2,7 +2,6 @@ from typing import List
 from kad_config import KadConfig
 from kad_types import NodeId
 from node import Node
-from time import sleep
 from logger import Logger
 
 
@@ -19,7 +18,7 @@ for node in nodes:
     node.run()
 
 for node in nodes:
-    node.join(timeout=10)
+    node.join(timeout=4)
 
 for node in nodes:
     node.terminate()

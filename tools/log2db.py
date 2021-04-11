@@ -96,6 +96,7 @@ def process_message(cursor: sqlite3.Cursor, fields: List[str]) -> None:
     message_id = fields[3]
     sender = fields[4]
     recipient = fields[5]
+    # arguments = ",".join(fields[6:]) if len(fields) > 6 else "no data"
     arguments = fields[6] if len(fields) > 6 else ""
 
     if sender == "None":
@@ -121,6 +122,8 @@ with open(log_path, "r") as fd:
         if len(line) == 0:
             print("ERROR: Unexpected line: \"{0:s}\" (line is empty).".format(line))
             sys.exit(1)
+        if line.startswith("RT>"):
+            continue
         fields: List[str] = line.split("|")
         if not len(fields):
             print("Unexpected line: \"{0:s}\" (line is empty).".format(line))

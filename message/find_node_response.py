@@ -18,4 +18,4 @@ class FindNodeResponse(Message):
         self.__node_ids = node_ids
 
     def csv(self) -> str:
-        return "|".join([super().csv(), "|".join(["{:d}".format(n) for n in self.__node_ids])])
+        return "|".join([super().csv(), "{" + ",".join(["{:d}".format(n) for n in self.__node_ids]) + "}"])

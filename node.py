@@ -43,6 +43,9 @@ class Node:
         self.__origin: Optional[NodeId] = origin
         self.__routing_table: RoutingTable = RoutingTable(node_id, config)
         self.__input_queue: Queue = Queue()
+        self.__boostrap_message_id: Optional[int] = None
+        """The ID of the first FIND_NODE message sent in order to bootstrap the node.
+        For the origin node, the value of this property is None."""
         # Declare the node's queue to the (global) "queue manager".
         QueueManager.add_queue(self.__local_node_id, self.__input_queue)
         if not self.__is_origin:
@@ -76,7 +79,7 @@ class Node:
         # Bootstrap the node (it it is not the origin node).
         if not self.__is_origin:
             print("{0:04d}> Bootstrap".format(self.__local_node_id))
-            self.bootstrap()
+            self.__boostrap_message_id = self.bootstrap()
 
     def bootstrap(self) -> MessageId:
         """
@@ -172,6 +175,45 @@ class Node:
     # Message processor                                                                                                #
     ####################################################################################################################
 
+    def __ping_for_replacement(self,
+                               bucket_idx: int,
+                               new_node_to_insert_id: NodeId,
+                               message_id: MessageId) -> None:
+        """
+        Ping a node in the context when we try to insert a new node into a full bucket.
+        In this context, the procedure is the following:
+        - we take the least recently seen node in the bucket.
+        - we ping thus node (the least recently seen).
+          * if the least recently seen node fails to respond to the PING message, then we evict it from
+            the bucket and we insert the new node.
+          * if the least recently seen node responds to the PING message, then we discard the new node
+            and the least recently seen node becomes the most recently seen node.
+        :param bucket_idx: the index of the bucket we want to insert the new node into.
+        :param new_node_to_insert_id: the ID of the new node (to insert into the bucket).
+        :param message_id: the ID of the message that triggered this action. This value is only used for
+        logging purposes.
+        """
+
+        least_recently_seen_node_id: NodeId = self.__routing_table.get_least_recently_seen(bucket_idx)
+        message = PingNode(sender_id=self.__local_node_id,
+                           recipient_id=least_recently_seen_node_id,
+                           message_id=Message.get_new_id())
+        target_queue: Queue = QueueManager.get_queue(least_recently_seen_node_id)
+        if target_queue is None:
+            print("{0:04d}> [{1:08d}] The queue for node {2:d} does not exist.".format(self.__local_node_id,
+                                                                                       message_id,
+                                                                                       least_recently_seen_node_id))
+            self.__ping_no_response(message, new_node_to_insert_id)
+            return
+        print("{0:04d}> [{1:08d}] {2:s}".format(self.__local_node_id, message_id, message.to_str()))
+        self.log("M|S|" + message.csv())
+        message.send()
+        # Please don't forget to add the timeout duration to the timestamp
+        # (expiration_data = nox + timeout_duration)
+        self.__ping_supervisor.add(message,
+                                   Timestamp(ceil(time()) + self.__config.message_ping_node_timeout),
+                                   new_node_to_insert_id)
+
     def process_terminate_node(self, message: TerminateNode) -> bool:
         print("{0:04d}> [{1:08d}] TERMINATE_NODE.".format(self.__local_node_id, message.message_id))
         QueueManager.del_queue(self.__local_node_id)
@@ -218,28 +260,31 @@ class Node:
         print("{0:04d}> [{1:08d}] Node added: <{2:s}>.".format(self.__local_node_id,
                                                                message_id,
                                                                "yes" if added else "no"))
+
         if not added and not already_in:
-            # The node was not added because the bucket if full.
-            # We ping the least recently node.
-            least_recently_seen_node_id: NodeId = self.__routing_table.get_least_recently_seen(bucket_idx)
-            message = PingNode(self.__local_node_id,
-                               least_recently_seen_node_id,
-                               Message.get_new_id())
-            target_queue: Queue = QueueManager.get_queue(least_recently_seen_node_id)
-            if target_queue is None:
-                print("{0:04d}> [{1:08d}] The queue for node {2:d} does not exist.".format(self.__local_node_id,
-                                                                                           message_id,
-                                                                                           least_recently_seen_node_id))
-                self.__ping_no_response(message, sender_id)
-                return True
-            print("{0:04d}> [{1:08d}] {2:s}".format(self.__local_node_id, message_id, message.to_str()))
-            self.log("M|S|" + message.csv())
-            message.send()
-            # Please don't forget to add the timeout duration to the timestamp
-            # (expiration_data = nox + timeout_duration)
-            self.__ping_supervisor.add(message,
-                                       Timestamp(ceil(time()) + self.__config.message_ping_node_timeout),
-                                       sender_id)
+            self.__ping_for_replacement(bucket_idx, sender_id, message_id)
+
+        #     # The node was not added because the bucket if full.
+        #     # We ping the least recently node.
+        #     least_recently_seen_node_id: NodeId = self.__routing_table.get_least_recently_seen(bucket_idx)
+        #     message = PingNode(self.__local_node_id,
+        #                        least_recently_seen_node_id,
+        #                        Message.get_new_id())
+        #     target_queue: Queue = QueueManager.get_queue(least_recently_seen_node_id)
+        #     if target_queue is None:
+        #         print("{0:04d}> [{1:08d}] The queue for node {2:d} does not exist.".format(self.__local_node_id,
+        #                                                                                    message_id,
+        #                                                                                    least_recently_seen_node_id))
+        #         self.__ping_no_response(message, sender_id)
+        #         return True
+        #     print("{0:04d}> [{1:08d}] {2:s}".format(self.__local_node_id, message_id, message.to_str()))
+        #     self.log("M|S|" + message.csv())
+        #     message.send()
+        #     # Please don't forget to add the timeout duration to the timestamp
+        #     # (expiration_data = nox + timeout_duration)
+        #     self.__ping_supervisor.add(message,
+        #                                Timestamp(ceil(time()) + self.__config.message_ping_node_timeout),
+        #                                sender_id)
         return True
 
     def process_find_node_response(self, message: FindNodeResponse) -> bool:
@@ -248,6 +293,18 @@ class Node:
                                                                                  message.sender_id))
         nodes_ids = message.node_ids
         print("{0:04d}> [{1:08d}] Nodes count: {2:d}".format(self.__local_node_id, message.message_id, len(nodes_ids)))
+
+        # Insert the nodes into the routing table.
+        for node_id in nodes_ids:
+            added, already_in, bucket_idx = self.__routing_table.add_node(node_id)
+            if not added and not already_in:
+                self.__ping_for_replacement(bucket_idx, node_id, message.message_id)
+
+        # If this is the response to the initial FIND_NODE (used for bootstrap), then continue
+        # the bootstrap sequence.
+        if message.message_id == self.__boostrap_message_id:
+            # TODO: send FIND_NODE messages for nodes IDs (chosen at random) located in far away buckets.
+            pass
         return True
 
     def process_ping(self, message: PingNode) -> bool:

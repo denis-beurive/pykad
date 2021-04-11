@@ -7,22 +7,22 @@ from logger import Logger
 
 
 Logger.init("kad.txt")
-conf: KadConfig = KadConfig(list_size=5, id_length=8, alpha=3, k=3)
+conf: KadConfig = KadConfig(id_length=8, alpha=3, k=3)
 
 origin_id: NodeId = NodeId(0)
 origin = Node(NodeId(origin_id), conf)
+origin.run()
 
-nodes: List[Node] = [origin]
-nodes.extend([Node(NodeId(i), conf, origin=origin_id) for i in range(1, 10)])
+nodes: List[Node] = [Node(NodeId(i), conf, origin=origin_id) for i in range(1, 10)]
 
 for node in nodes:
     node.run()
-    sleep(1)
 
 for node in nodes:
-    node.join(timeout=4)
+    node.join(timeout=10)
 
 for node in nodes:
     node.terminate()
+origin.terminate()
 
 print("Done")

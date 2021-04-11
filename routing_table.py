@@ -1,5 +1,6 @@
 from typing import Tuple, List, Optional
 from time import time
+from random import randint
 from math import floor
 from threading import RLock
 from kad_config import KadConfig
@@ -11,14 +12,11 @@ from kad_types import NodeId, BucketMask, BucketIndex
 class RoutingTable:
 
     def __init__(self, identifier: NodeId, config: KadConfig):
-        self.__bucket_size = config.bucket_size
-        self.__id_length = config.id_length
-        self.__alpha = config.alpha
-        self.__k = config.k
+        self.__config = config
         self.__identifier = identifier
         self.__lock = RLock()
-        self.__buckets: Tuple[Bucket] = tuple(Bucket(config.bucket_size) for _ in range(config.k))
-        self.__side_buckets: Tuple[Bucket] = tuple(Bucket(config.bucket_size) for _ in range(config.k))
+        # Create "config.id_length" k-buckets. Each k-bucket contains "config.k" node IDs.
+        self.__buckets: Tuple[Bucket] = tuple(Bucket(config.k) for _ in range(config.id_length))
         self.__bucket_masks: Tuple[BucketMask] = self.__init_bucket_masks()
 
     def __init_bucket_masks(self) -> Tuple[BucketMask]:
@@ -27,20 +25,33 @@ class RoutingTable:
 
         Please note that these masks depends on the local node.
 
-        Let's say that a node identifier is encoded on 8 bits.
+        Let's say that a node identifier is encoded on 8 bits (id_length = 8).
 
         Then:
 
             1. the routing table contains 8 buckets.
             2. if the local node identifier is [x7, x6, x5, x4, x3, x2, x1, x0] (with x7: MSB and x0: LSB):
-               mask for bucket 0: (x7, x6, x5, x4, x3, x2, x1, ~x0)
-               mask for bucket 1: (x7, x6, x5, x4, x3, x2, ~x1)
-               mask for bucket 2: (x7, x6, x5, x4, x3, ~x2)
-               mask for bucket 3: (x7, x6, x5, x4, ~x3)
-               mask for bucket 4: (x7, x6, x5, ~x4)
-               mask for bucket 5: (x7, x6, ~x5)
-               mask for bucket 6: (x7, ~x6)
-               mask for bucket 7: (~x7)
+               mask for bucket 0: mask0 = (x7, x6, x5, x4, x3, x2, x1, ~x0)
+                                  There is only one node ID that verifies the condition:
+                                  (ID >> 0) xor mask0 is 0
+                                  - x7, x6, x5, x4, x3, x2, x1, ~x0
+               mask for bucket 1: mask1 = (x7, x6, x5, x4, x3, x2, ~x1)
+                                  There are 2 node IDs that verify the condition:
+                                  (ID >> 1) xor mask1 is 0
+                                  - x7, x6, x5, x4, x3, x2, ~x1, 0
+                                  - x7, x6, x5, x4, x3, x2, ~x1, 1
+               mask for bucket 2: mask2 = (x7, x6, x5, x4, x3, ~x2)
+                                  There are 4 node IDs that verify the condition:
+                                  (ID >> 2) xor mask1 is 0
+                                  - x7, x6, x5, x4, x3, ~x2, 0, 0
+                                  - x7, x6, x5, x4, x3, ~x2, 0, 1
+                                  - x7, x6, x5, x4, x3, ~x2, 1, 0
+                                  - x7, x6, x5, x4, x3, ~x2, 1, 1
+               mask for bucket 3: mask3 = (x7, x6, x5, x4, ~x3)
+               mask for bucket 4: mask4 = (x7, x6, x5, ~x4)
+               mask for bucket 5: mask5 = (x7, x6, ~x5)
+               mask for bucket 6: mask6 = (x7, ~x6)
+               mask for bucket 7: mask7 = (~x7)
 
                Where "~x" is the complement of x (~0=1 and ~1=0)
 
@@ -59,7 +70,7 @@ class RoutingTable:
 
         :return: the list of bucket masks.
         """
-        return tuple(BucketMask((self.__identifier >> i) ^ 1) for i in range(self.__k))
+        return tuple(BucketMask((self.__identifier >> i) ^ 1) for i in range(self.__config.id_length))
 
     @property
     def identifier(self) -> NodeId:
@@ -82,8 +93,8 @@ class RoutingTable:
         """
         with self.__lock:
             index: int = -1
-            for i in range(self.__k):
-                if not (identifier >> i) ^ self.__bucket_masks[i]:
+            for i in range(self.__config.id_length):
+                if not ((identifier >> i) ^ self.__bucket_masks[i]):
                     index = i
                     break
             return index
@@ -159,10 +170,50 @@ class RoutingTable:
         If this parameter is not specified, then the method will find out the bucket index.
         """
         with self.__lock:
-            if not bucket_idx:
+            if bucket_idx is None:
                 bucket_idx = self.__find_bucket_index(node_id)
             bucket: Bucket = self.__buckets[bucket_idx]
             bucket.remove_node(node_id)
+
+    def get_random_node_id_within_bucket(self, bucket_index: BucketIndex) -> NodeId:
+        """
+        Return a node ID that belongs to a given bucket identifier by its index.
+        The returned ID is drawn at random.
+
+        The maximum number of nodes within the bucket at index I is: 2^I
+
+        Example: let the local node identifier be 0b00000101.
+
+                mask0 is 0b00000100 The only node that belongs to this bucket is 0b00000100.
+                mask1 is 0b.0000011 The only nodes that belong to this bucket are:
+                      - 0b0000011[0]
+                      - 0b0000011[1]
+                mask2 is 0b..000000 The only nodes that belong to this bucket are:
+                      - 0b000000[00]
+                      - 0b000000[01]
+                      - 0b000000[10]
+                      - 0b000000[11]
+                mask3 is 0b...00000 The only nodes that belong to this bucket are:
+                      - 0b00000[000]
+                      - 0b00000[001]
+                      - 0b00000[010]
+                      - 0b00000[011]
+                      - 0b00000[100]
+                      - 0b00000[101]
+                      - 0b00000[110]
+                      - 0b00000[111]
+                ... and so on.
+
+        :param bucket_index: the bucket index.
+        :return: a node ID that belongs to this bucket identifier by the given index.
+        """
+        if bucket_index not in range(0, self.__config.id_length):
+            raise Exception("Unexpected bucket index {0:d}.".format(bucket_index))
+        maximum = pow(2, self.__config.id_length) - 1
+        v = (self.__bucket_masks[bucket_index] << bucket_index) & maximum
+        for i in range(0, bucket_index):
+            v = v | (randint(0, 1) << i)
+        return v
 
     def __repr__(self) -> str:
         """
@@ -170,17 +221,17 @@ class RoutingTable:
         :return: a textual representation of the routing table.
         """
         with self.__lock:
-            representation: List[str] = [('RT for {0:0%db}' % self.__id_length).format(self.__identifier),
+            representation: List[str] = [('RT for {0:0%db}' % self.__config.id_length).format(self.__identifier),
                                          '  Bucket masks:']
-            for i in range(self.__id_length):
+            for i in range(self.__config.id_length):
                 representation.append(("    {0:3d}: {1:0%db}{2:s} (test if ((id >> {3:03d}) ^ mask) == 0)" %
-                                       (self.__id_length - i)).format(i, self.__bucket_masks[i], '.' * i, i))
+                                       (self.__config.id_length - i)).format(i, self.__bucket_masks[i], '.' * i, i))
             representation.append("  Bucket contents:")
-            for i in range(self.__id_length):
+            for i in range(self.__config.id_length):
                 bucket: Bucket = self.__buckets[i]
                 representation.append("    {0:3d}: {1:3d} node(s)".format(i, bucket.count()))
                 if bucket.count():
                     for p in bucket.get_all_nodes_data():
-                        representation.append('             {0:s}'.format(p.to_str(self.__id_length)))
+                        representation.append('             {0:s}'.format(p.to_str(self.__config.id_length)))
             return "\n".join(representation)
 

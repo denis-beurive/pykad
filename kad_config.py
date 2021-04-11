@@ -2,12 +2,11 @@
 class KadConfig:
 
     def __init__(self,
-                 list_size=20,
                  id_length=128,
-                 alpha=3, k=20,
+                 alpha=3,
+                 k=20,
                  message_find_node_timeout: int = 3,
                  message_ping_node_timeout: int = 3):
-        self.__bucket_size: int = list_size
         self.__id_length: int = id_length
         self.__alpha: int = alpha
         self.__k: int = k
@@ -15,15 +14,10 @@ class KadConfig:
         self.__message_ping_node_timeout: int = message_ping_node_timeout
 
     @property
-    def bucket_size(self) -> int:
-        return self.__bucket_size
-
-    @bucket_size.setter
-    def bucket_size(self, value: int) -> None:
-        self.__bucket_size = value
-
-    @property
     def id_length(self) -> int:
+        """
+        The length in bits of a node ID.
+        """
         return self.__id_length
 
     @id_length.setter
@@ -32,6 +26,10 @@ class KadConfig:
 
     @property
     def alpha(self) -> int:
+        """
+        The system wide concurrency parameter called "alpha".
+        This value is used while locating the k closest nodes to a given node.
+        """
         return self.__alpha
 
     @alpha.setter
@@ -40,6 +38,9 @@ class KadConfig:
 
     @property
     def k(self) -> int:
+        """
+        The system wide replication parameter. Buckets contains k node IDs.
+        """
         return self.__k
 
     @k.setter

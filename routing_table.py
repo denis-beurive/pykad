@@ -235,10 +235,11 @@ class RoutingTable:
                         representation.append('             {0:s}'.format(p.to_str(self.__config.id_length)))
             return "\n".join(representation)
 
-    def dump(self) -> List[str]:
+    def dump(self) -> str:
         with self.__lock:
-            representation: List[str] = []
+            counts: List[str] = []
             for i in range(self.__config.id_length):
                 bucket: Bucket = self.__buckets[i]
-                representation.append("{0:3d}: {1:d}".format(i, bucket.count()))
-            return representation
+                if bucket.count():
+                    counts.append("{0:d}:[{1:s}]".format(i, ",".join([str(n) for n in bucket.get_all_nodes_ids()])))
+            return "{" + " ".join(counts) + "}"

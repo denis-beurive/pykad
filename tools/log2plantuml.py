@@ -53,7 +53,8 @@ nodes = ["entity node{0:d}".format(n[0]) for n in entry1]
 print("@startuml")
 print("\n".join(nodes))
 
-cursor1.execute("SELECT type, message_id, origin, recipient, args FROM message WHERE direction='S' ORDER BY message_id")
+cursor1.execute("SELECT type, message_id, origin, recipient, args, direction FROM message WHERE "
+                "direction='S' ORDER BY message_id")
 while True:
     entry1 = cursor1.fetchone()
     if entry1 is None:
@@ -63,6 +64,7 @@ while True:
     origin_id = entry1[2]
     recipient_id = entry1[3]
     data = entry1[4]
+    direction = entry1[5]
 
     cursor2: sqlite3.Cursor = con.cursor()
     origin = get_node_name(cursor2, origin_id)

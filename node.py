@@ -90,7 +90,7 @@ class Node:
             raise Exception("Unexpected error: the origin does not boostrap! You have an error in your code.")
         message = FindNode(self.__local_node_id, self.__origin, Message.get_new_id(), self.__local_node_id)
         self.log("M|S|" + message.csv())
-        self.log("\n".join(["RT[{}]: {}".format(self.__local_node_id, line) for line in self.__routing_table.dump()]))
+        self.log("RT[{}]: {}".format(self.__local_node_id, self.__routing_table.dump()))
         message.send()
         return message.message_id
 
@@ -109,7 +109,7 @@ class Node:
     def terminate(self):
         message = TerminateNode(self.__local_node_id, Message.get_new_id())
         self.log("M|S|" + message.csv())
-        self.log("\n".join(["RT[{}]: {}".format(self.__local_node_id, line) for line in self.__routing_table.dump()]))
+        self.log("RT[{}]: {}".format(self.__local_node_id, self.__routing_table.dump()))
         message.send()
 
     def log(self, message: str) -> None:
@@ -263,7 +263,7 @@ class Node:
         print("{0:04d}> [{1:08d}] Node added: <{2:s}>.".format(self.__local_node_id,
                                                                message_id,
                                                                "yes" if added else "no"))
-        self.log("\n".join(["RT[{}]: {}".format(self.__local_node_id, line) for line in self.__routing_table.dump()]))
+        self.log("RT[{}]: {}".format(self.__local_node_id, self.__routing_table.dump()))
         if not added and not already_in:
             self.__ping_for_replacement(bucket_idx, sender_id, message_id)
         return True
@@ -280,7 +280,7 @@ class Node:
             added, already_in, bucket_idx = self.__routing_table.add_node(node_id)
             if not added and not already_in:
                 self.__ping_for_replacement(bucket_idx, node_id, message.message_id)
-        self.log("\n".join(["RT[{}]: {}".format(self.__local_node_id, line) for line in self.__routing_table.dump()]))
+        self.log("RT[{}]: {}".format(self.__local_node_id, self.__routing_table.dump()))
 
         # If this is the response to the initial FIND_NODE (used for bootstrap), then continue
         # the bootstrap sequence.

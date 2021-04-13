@@ -18,6 +18,7 @@ from message.message import MessageType, Message
 from queue_manager import QueueManager
 from message_supervisor.ping import Ping as PingSupervisor
 from logger import Logger
+from uid import Uid
 
 
 class Node:
@@ -86,10 +87,11 @@ class Node:
         Send the initial FIND_NODE message used to bootstrap the local node.
         :return: the request ID that uniquely identifies the message.
         """
+        uid = Uid.uid()
         if self.__is_origin:
             raise Exception("Unexpected error: the origin does not boostrap! You have an error in your code.")
         message = FindNode(self.__local_node_id, self.__origin, Message.get_new_id(), self.__local_node_id)
-        self.log("M|S|" + message.csv())
+        self.log("M|S|{}|".format(uid) + message.csv())
         self.log("RT[{}]: {}".format(self.__local_node_id, self.__routing_table.dump()))
         message.send()
         return message.message_id
@@ -107,8 +109,9 @@ class Node:
         self.__cron_thread.join(timeout=timeout)
 
     def terminate(self):
+        uid = Uid.uid()
         message = TerminateNode(self.__local_node_id, Message.get_new_id())
-        self.log("M|S|" + message.csv())
+        self.log("M|S|{}|".format(uid) + message.csv())
         self.log("RT[{}]: {}".format(self.__local_node_id, self.__routing_table.dump()))
         message.send()
 
@@ -127,18 +130,19 @@ class Node:
         the method execute the suitable message handler.
         """
         while True:
+            uid = Uid.uid()
             print("{0:04d}> Wait for a message...".format(self.__local_node_id))
             message: Message = self.__input_queue.get()
-            self.log("M|R|" + message.csv())
+            self.log("M|R|{}|".format(uid) + message.csv())
             processor: Callable = self.__messages_processor[message.message_type]
 
             with self.__connected_lock:
                 if self.__connected:
-                    if not processor(message):
+                    if not processor(message, uid):
                         break
                 else:
                     if message.message_type in (MessageType.TERMINATE_NODE, MessageType.RECONNECT_NODE):
-                        if not processor(message):
+                        if not processor(message, uid):
                             break
 
     def __cron(self) -> None:
@@ -196,6 +200,7 @@ class Node:
         logging purposes.
         """
 
+        uid = Uid.uid()
         least_recently_seen_node_id: NodeId = self.__routing_table.get_least_recently_seen(bucket_idx)
         message = PingNode(sender_id=self.__local_node_id,
                            recipient_id=least_recently_seen_node_id,
@@ -208,7 +213,7 @@ class Node:
             self.__ping_no_response(message, new_node_to_insert_id)
             return
         print("{0:04d}> [{1:08d}] {2:s}".format(self.__local_node_id, message_id, message.to_str()))
-        self.log("M|S|" + message.csv())
+        self.log("M|S|{}|".format(uid) + message.csv())
         # self.log("\n".join(["RT[{}]: {}".format(self.__local_node_id, line) for line in self.__routing_table.dump()]))
         message.send()
         # Please don't forget to add the timeout duration to the timestamp
@@ -217,25 +222,25 @@ class Node:
                                    Timestamp(ceil(time()) + self.__config.message_ping_node_timeout),
                                    new_node_to_insert_id)
 
-    def process_terminate_node(self, message: TerminateNode) -> bool:
+    def process_terminate_node(self, message: TerminateNode, uid: Optional[int] = None) -> bool:
         print("{0:04d}> [{1:08d}] TERMINATE_NODE.".format(self.__local_node_id, message.message_id))
         QueueManager.del_queue(self.__local_node_id)
         self.__ping_supervisor.stop()
         return False
 
-    def process_disconnect_node(self, message: DisconnectNode) -> bool:
+    def process_disconnect_node(self, message: DisconnectNode, uid: Optional[int] = None) -> bool:
         print("{0:04d}> [{1:08d}] DISCONNECT_NODE.".format(self.__local_node_id, message.message_id))
         with self.__connected_lock:
             self.__connected = False
         return True
 
-    def process_reconnect_node(self, message: ReconnectNode) -> bool:
+    def process_reconnect_node(self, message: ReconnectNode, uid: Optional[int] = None) -> bool:
         print("{0:04d}> [{1:08d}] RECONNECT_NODE.".format(self.__local_node_id, message.message_id))
         with self.__connected_lock:
             self.__connected = True
         return True
 
-    def process_find_node(self, message: FindNode) -> bool:
+    def process_find_node(self, message: FindNode, uid: Optional[int] = None) -> bool:
         """
         Process a message of type FIND_NODE[target_node_id].
 
@@ -246,6 +251,7 @@ class Node:
         The message recipient adds the sender node to its routing table.
 
         :param message: the message to process.
+        :param uid: unique ID that identifies the message.
         :return: always True (which means "do not stop the node").
         """
         sender_id = message.sender_id
@@ -255,7 +261,7 @@ class Node:
         # Forge a response with the same message ID and send it.
         closest = self.__routing_table.find_closest(message.node_id, self.__config.id_length)
         response = FindNodeResponse(self.__local_node_id, sender_id, message_id, closest)
-        self.log("M|S|" + response.csv())
+        self.log("M|S|{}|".format(uid) + response.csv())
         response.send()
 
         # Add the sender ID to the routing table.
@@ -268,7 +274,7 @@ class Node:
             self.__ping_for_replacement(bucket_idx, sender_id, message_id)
         return True
 
-    def process_find_node_response(self, message: FindNodeResponse) -> bool:
+    def process_find_node_response(self, message: FindNodeResponse, uid: Optional[int] = None) -> bool:
         print("{0:04d}> [{1:08d}] Process FIND_NODE_RESPONSE from {2:d}.".format(self.__local_node_id,
                                                                                  message.message_id,
                                                                                  message.sender_id))
@@ -280,7 +286,7 @@ class Node:
             added, already_in, bucket_idx = self.__routing_table.add_node(node_id)
             if not added and not already_in:
                 self.__ping_for_replacement(bucket_idx, node_id, message.message_id)
-        self.log("RT[{}]: {}".format(self.__local_node_id, self.__routing_table.dump()))
+        self.log("D|RT|{}|RT[{}]: {}".format(uid, self.__local_node_id, self.__routing_table.dump()))
 
         # If this is the response to the initial FIND_NODE (used for bootstrap), then continue
         # the bootstrap sequence.
@@ -289,7 +295,7 @@ class Node:
             pass
         return True
 
-    def process_ping(self, message: PingNode) -> bool:
+    def process_ping(self, message: PingNode, uid: Optional[int] = None) -> bool:
         """
         Process a PING message.
         :param message: the PING message.
@@ -303,13 +309,13 @@ class Node:
         message = PingNodeResponse(sender_id=self.__local_node_id,
                                    recipient_id=message.sender_id,
                                    message_id=message.message_id)
-        self.log("M|S|" + message.csv())
+        self.log("M|S|{}|".format(uid) + message.csv())
         # TODO: add the sender to the routing table.
         # self.log("\n".join(["RT[{}]: {}".format(self.__local_node_id, line) for line in self.__routing_table.dump()]))
         message.send()
         return True
 
-    def process_ping_response(self, message: PingNodeResponse) -> bool:
+    def process_ping_response(self, message: PingNodeResponse, uid: Optional[int] = None) -> bool:
         print("{0:04d}> [{1:08d}] Process PING_NODE_RESPONSE from {2:d}.".format(self.__local_node_id,
                                                                                  message.message_id,
                                                                                  message.sender_id))

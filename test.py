@@ -18,7 +18,7 @@ for node in nodes:
     node.run()
 
 for node in nodes:
-    node.join(timeout=4)
+    node.join(timeout=1)
 
 for node in nodes:
     node.terminate()

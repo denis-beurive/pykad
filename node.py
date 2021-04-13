@@ -14,11 +14,12 @@ from message.disconnect_node import DisconnectNode
 from message.reconnect_node import ReconnectNode
 from message.ping_node import PingNode
 from message.ping_node_reponse import PingNodeResponse
-from message.message import MessageType, Message
+from message.message import MessageType, MessageDirection, Message
 from queue_manager import QueueManager
 from message_supervisor.ping import Ping as PingSupervisor
 from logger import Logger
 from uid import Uid
+from data.routing_table import RoutingTable as RoutingTableData
 
 
 class Node:
@@ -90,11 +91,12 @@ class Node:
         uid = Uid.uid()
         if self.__is_origin:
             raise Exception("Unexpected error: the origin does not boostrap! You have an error in your code.")
-        message = FindNode(self.__local_node_id, self.__origin, Message.get_new_id(), self.__local_node_id)
-        self.log("M|S|{}|".format(uid) + message.csv())
-        self.log("RT[{}]: {}".format(self.__local_node_id, self.__routing_table.dump()))
+        message = FindNode(uid, self.__local_node_id, self.__origin, Message.get_new_request_id(), self.__local_node_id)
+        data = RoutingTableData(uid, self.__local_node_id, self.__routing_table.dump())
+        self.log(message.to_json(MessageDirection.SEND))
+        self.log(data.to_json())
         message.send()
-        return message.message_id
+        return message.request_id
 
     @property
     def data(self) -> NodeData:
@@ -110,9 +112,10 @@ class Node:
 
     def terminate(self):
         uid = Uid.uid()
-        message = TerminateNode(self.__local_node_id, Message.get_new_id())
-        self.log("M|S|{}|".format(uid) + message.csv())
-        self.log("RT[{}]: {}".format(self.__local_node_id, self.__routing_table.dump()))
+        message = TerminateNode(uid, self.__local_node_id, Message.get_new_request_id())
+        data = RoutingTableData(uid, self.__local_node_id, self.__routing_table.dump())
+        self.log(message.to_json(MessageDirection.SEND))
+        self.log(data.to_json())
         message.send()
 
     def log(self, message: str) -> None:
@@ -133,7 +136,8 @@ class Node:
             uid = Uid.uid()
             print("{0:04d}> Wait for a message...".format(self.__local_node_id))
             message: Message = self.__input_queue.get()
-            self.log("M|R|{}|".format(uid) + message.csv())
+            message.uid = uid
+            self.log(message.to_json(MessageDirection.RECEIVE))
             processor: Callable = self.__messages_processor[message.message_type]
 
             with self.__connected_lock:
@@ -202,9 +206,10 @@ class Node:
 
         uid = Uid.uid()
         least_recently_seen_node_id: NodeId = self.__routing_table.get_least_recently_seen(bucket_idx)
-        message = PingNode(sender_id=self.__local_node_id,
+        message = PingNode(uid=uid,
+                           sender_id=self.__local_node_id,
                            recipient_id=least_recently_seen_node_id,
-                           message_id=Message.get_new_id())
+                           request_id=Message.get_new_request_id())
         target_queue: Queue = QueueManager.get_queue(least_recently_seen_node_id)
         if target_queue is None:
             print("{0:04d}> [{1:08d}] The queue for node {2:d} does not exist.".format(self.__local_node_id,
@@ -213,8 +218,7 @@ class Node:
             self.__ping_no_response(message, new_node_to_insert_id)
             return
         print("{0:04d}> [{1:08d}] {2:s}".format(self.__local_node_id, message_id, message.to_str()))
-        self.log("M|S|{}|".format(uid) + message.csv())
-        # self.log("\n".join(["RT[{}]: {}".format(self.__local_node_id, line) for line in self.__routing_table.dump()]))
+        self.log(message.to_json(MessageDirection.SEND))
         message.send()
         # Please don't forget to add the timeout duration to the timestamp
         # (expiration_data = nox + timeout_duration)
@@ -223,19 +227,19 @@ class Node:
                                    new_node_to_insert_id)
 
     def process_terminate_node(self, message: TerminateNode, uid: Optional[int] = None) -> bool:
-        print("{0:04d}> [{1:08d}] TERMINATE_NODE.".format(self.__local_node_id, message.message_id))
+        print("{0:04d}> [{1:08d}] TERMINATE_NODE.".format(self.__local_node_id, message.request_id))
         QueueManager.del_queue(self.__local_node_id)
         self.__ping_supervisor.stop()
         return False
 
     def process_disconnect_node(self, message: DisconnectNode, uid: Optional[int] = None) -> bool:
-        print("{0:04d}> [{1:08d}] DISCONNECT_NODE.".format(self.__local_node_id, message.message_id))
+        print("{0:04d}> [{1:08d}] DISCONNECT_NODE.".format(self.__local_node_id, message.request_id))
         with self.__connected_lock:
             self.__connected = False
         return True
 
     def process_reconnect_node(self, message: ReconnectNode, uid: Optional[int] = None) -> bool:
-        print("{0:04d}> [{1:08d}] RECONNECT_NODE.".format(self.__local_node_id, message.message_id))
+        print("{0:04d}> [{1:08d}] RECONNECT_NODE.".format(self.__local_node_id, message.request_id))
         with self.__connected_lock:
             self.__connected = True
         return True
@@ -254,14 +258,15 @@ class Node:
         :param uid: unique ID that identifies the message.
         :return: always True (which means "do not stop the node").
         """
+        uid = Uid.uid()
         sender_id = message.sender_id
-        message_id = message.message_id
+        message_id = message.request_id
         print("{0:04d}> [{1:08d}] Process FIND_NODE from {2:d}.".format(self.__local_node_id, message_id, sender_id))
 
         # Forge a response with the same message ID and send it.
         closest = self.__routing_table.find_closest(message.node_id, self.__config.id_length)
-        response = FindNodeResponse(self.__local_node_id, sender_id, message_id, closest)
-        self.log("M|S|{}|".format(uid) + response.csv())
+        response = FindNodeResponse(uid, self.__local_node_id, sender_id, message_id, closest)
+        self.log(message.to_json(MessageDirection.SEND))
         response.send()
 
         # Add the sender ID to the routing table.
@@ -269,28 +274,29 @@ class Node:
         print("{0:04d}> [{1:08d}] Node added: <{2:s}>.".format(self.__local_node_id,
                                                                message_id,
                                                                "yes" if added else "no"))
-        self.log("RT[{}]: {}".format(self.__local_node_id, self.__routing_table.dump()))
+        # self.log("RT[{}]: {}".format(self.__local_node_id, self.__routing_table.dump()))
         if not added and not already_in:
             self.__ping_for_replacement(bucket_idx, sender_id, message_id)
         return True
 
     def process_find_node_response(self, message: FindNodeResponse, uid: Optional[int] = None) -> bool:
         print("{0:04d}> [{1:08d}] Process FIND_NODE_RESPONSE from {2:d}.".format(self.__local_node_id,
-                                                                                 message.message_id,
+                                                                                 message.request_id,
                                                                                  message.sender_id))
         nodes_ids = message.node_ids
-        print("{0:04d}> [{1:08d}] Nodes count: {2:d}".format(self.__local_node_id, message.message_id, len(nodes_ids)))
+        print("{0:04d}> [{1:08d}] Nodes count: {2:d}".format(self.__local_node_id, message.request_id, len(nodes_ids)))
 
+        data = RoutingTableData(uid, self.__local_node_id, self.__routing_table.dump())
+        self.log(data.to_json())
         # Insert the nodes into the routing table.
         for node_id in nodes_ids:
             added, already_in, bucket_idx = self.__routing_table.add_node(node_id)
             if not added and not already_in:
-                self.__ping_for_replacement(bucket_idx, node_id, message.message_id)
-        self.log("D|RT|{}|RT[{}]: {}".format(uid, self.__local_node_id, self.__routing_table.dump()))
+                self.__ping_for_replacement(bucket_idx, node_id, message.request_id)
 
         # If this is the response to the initial FIND_NODE (used for bootstrap), then continue
         # the bootstrap sequence.
-        if message.message_id == self.__boostrap_message_id:
+        if message.request_id == self.__boostrap_message_id:
             # TODO: send FIND_NODE messages for nodes IDs (chosen at random) located in far away buckets.
             pass
         return True
@@ -305,11 +311,11 @@ class Node:
             # The node terminated. This should not happen in this simulation, unless the node received a
             # TERMINATE_NODE message.
             return True
-
-        message = PingNodeResponse(sender_id=self.__local_node_id,
+        message = PingNodeResponse(uid=uid,
+                                   sender_id=self.__local_node_id,
                                    recipient_id=message.sender_id,
-                                   message_id=message.message_id)
-        self.log("M|S|{}|".format(uid) + message.csv())
+                                   request_id=message.request_id)
+        self.log(message.to_json(MessageDirection.SEND))
         # TODO: add the sender to the routing table.
         # self.log("\n".join(["RT[{}]: {}".format(self.__local_node_id, line) for line in self.__routing_table.dump()]))
         message.send()
@@ -317,9 +323,9 @@ class Node:
 
     def process_ping_response(self, message: PingNodeResponse, uid: Optional[int] = None) -> bool:
         print("{0:04d}> [{1:08d}] Process PING_NODE_RESPONSE from {2:d}.".format(self.__local_node_id,
-                                                                                 message.message_id,
+                                                                                 message.request_id,
                                                                                  message.sender_id))
         # Please don't forget remove the message from the PING supervisor.
-        self.__ping_supervisor.delete(message.message_id)
+        self.__ping_supervisor.delete(message.request_id)
         self.__routing_table.set_least_recently_seen(message.sender_id)
         return True

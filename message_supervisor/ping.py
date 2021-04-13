@@ -37,7 +37,7 @@ class Ping(MessageSupervisor):
         :param replacement_node_id: the ID of the node that should replace the pinged node in the routing table.
         Please note that this parameter is optional.
         """
-        super()._add(message.message_id, expiration_timestamp, [message, replacement_node_id])
+        super()._add(message.request_id, expiration_timestamp, [message, replacement_node_id])
 
     def get(self, message_id: MessageId, auto_remove: bool = True) -> Optional[Tuple[PingNode, Optional[NodeId]]]:
         """

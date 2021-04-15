@@ -17,9 +17,11 @@ class MessageType(Enum):
     DISCONNECT_NODE = 5
     RECONNECT_NODE = 6
 
+
 class MessageDirection(Enum):
     SEND = "send"
     RECEIVE = "receive"
+
 
 class Message(ABC):
     """
@@ -45,6 +47,7 @@ class Message(ABC):
     }
 
     def __init__(self,
+                 direction: MessageDirection,
                  uid: int,
                  request_id: MessageId,
                  message_type: MessageType,
@@ -52,6 +55,7 @@ class Message(ABC):
                  sender_id: Optional[NodeId] = None):
         """
         Create a message.
+        :param direction: the direction (send or receive).
         :param uid: message unique ID.
         :param request_id: the (unique) ID of the request.
         :param message_type: the type of the message.
@@ -60,10 +64,11 @@ class Message(ABC):
         parameter may be None. The value None is used for administrative messages that are not sent by nodes
         (typical example: the message that asks the recipient node to terminate its execution).
         """
+        self.__direction = direction
+        self.__uid = uid
         self.__request_id = request_id
         self.__message_type = message_type
         self.__recipient_id = recipient_id
-        self.__uid = uid
         self.__sender_id = sender_id
 
     @staticmethod
@@ -75,6 +80,14 @@ class Message(ABC):
         with Message.__lock:
             Message.__request_id_reference += 1
             return MessageId(Message.__request_id_reference)
+
+    @property
+    def direction(self) -> MessageDirection:
+        return self.__direction
+
+    @direction.setter
+    def direction(self, value: MessageDirection) -> None:
+        self.__direction = value
 
     @property
     def sender_id(self) -> NodeId:
@@ -126,6 +139,7 @@ class Message(ABC):
     def _to_dict(self) -> Dict[str, Any]:
         return {
             'log-type': 'message',
+            'direction': self.__direction.value,
             'type': self.message_type_str(),
             'uid': self.uid,
             'request_id': self.request_id,
@@ -137,7 +151,5 @@ class Message(ABC):
     def to_dict(self) -> Dict[str, Any]:
         pass
 
-    def to_json(self, direction: MessageDirection) -> str:
-        d = self.to_dict()
-        d["direction"] = direction.value
+    def to_json(self) -> str:
         return dumps(self.to_dict())

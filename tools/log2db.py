@@ -3,39 +3,36 @@ import sqlite3
 import argparse
 import os
 import sys
+import json
 
 
 SCHEMA = """
-CREATE TABLE node (
-    id       INTEGER PRIMARY KEY AUTOINCREMENT,
-    name     INTEGER NOT NULL
-);
-CREATE UNIQUE INDEX node_name_index ON node (name);
-
-CREATE TABLE rt (
+CREATE TABLE data (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
-    fk_message_uid   INTEGER NOT NULL,
-    data             TEXT,
-    FOREIGN KEY(fk_message_uid) REFERENCES "message" (uid)
+    type             TEXT NOT NULL,
+    message_uid      INTEGER NOT NULL,
+    node_id          INTEGER NOT NULL,
+    data             TEXT
 );
-CREATE INDEX message_fk_message_uid_index ON rt (fk_message_uid);
+CREATE INDEX message_message_uid_index ON data (message_uid);
+CREATE INDEX message_node_id_index ON data (node_id);
 
 CREATE TABLE message (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     direction     INTEGER NOT NULL,
     type          TEXT NOT NULL,
-    message_id    INTEGER NOT NULL,
-    fk_origin     INTEGER NOT NULL,
-    fk_recipient  INTEGER NOT NULL,
-    args          TEXT,
-    uid           INTEGER DEFAULT NULL,
-    FOREIGN KEY(fk_origin) REFERENCES "node"(id),
-    FOREIGN KEY(fk_recipient) REFERENCES "node"(id)
+    uid           INTEGER NOT NULL,
+    request_id    INTEGER NOT NULL,
+    sender_id     INTEGER NOT NULL,
+    recipient_id  INTEGER NOT NULL,
+    args          TEXT
 );
 CREATE INDEX message_direction_index ON message (direction);
 CREATE INDEX message_type_index ON message (type);
-CREATE INDEX origin_type_index ON message (fk_origin);
-CREATE INDEX recipient_type_index ON message (fk_recipient);
+CREATE INDEX uid_index ON message (uid);
+CREATE INDEX request_id_index ON message (request_id);
+CREATE INDEX sender_id_index ON message (sender_id);
+CREATE INDEX recipient_id ON message (recipient_id);
 
 
 
@@ -69,67 +66,16 @@ except Exception as e:
     sys.exit(1)
 
 con = sqlite3.connect(db_path)
-cur: sqlite3.Cursor = con.cursor()
+cursor: sqlite3.Cursor = con.cursor()
 
 try:
     for statement in SCHEMA.split(";"):
-        cur.execute(statement)
+        cursor.execute(statement)
 except sqlite3.Error as e:
     print("An error occurred:", e.args[0])
+    sys.exit(1)
 
 # Parse the LOG file and load the database.
-
-
-def create_node_id(cursor: sqlite3.Cursor, node: str) -> int:
-    """
-    Insert a node into the table "node" if it is not already present to the table.
-    :param cursor: the database cursor.
-    :param node: the node ID to insert.
-    :return: the value of the table field "node.id".
-    """
-    cursor.execute("SELECT id FROM node WHERE name=?", (node, ))
-    entry = cursor.fetchone()
-    if entry is not None:
-        return entry[0]
-    cursor.execute("INSERT INTO node (name) VALUES (?)", (node, ))
-    cursor.execute("select last_insert_rowid()")
-    entry = cursor.fetchone()
-    return entry[0]
-
-
-def process_message(cursor: sqlite3.Cursor, fields: List[str]) -> None:
-    """
-    Insert a message into the database.
-    :param cursor: the database cursor.
-    :param fields: the fields that composes the message to insert.
-    """
-    direction = fields[1]
-    uid = fields[2]
-    message_type = fields[3]
-    message_id = fields[4]
-    sender = fields[5]
-    recipient = fields[6]
-    # arguments = ",".join(fields[6:]) if len(fields) > 6 else "no data"
-    arguments = fields[7] if len(fields) > 7 else ""
-
-    if sender == "None":
-        return
-
-    if direction not in ("S", "R"):
-        raise Exception("Invalid direction <{0:s}>!".format(direction))
-
-    id_sender = create_node_id(cursor, sender)
-    id_recipient = create_node_id(cursor, recipient)
-    cursor.execute("INSERT INTO message (direction, uid, type, message_id, fk_origin, fk_recipient, args) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                   (direction, uid, message_type, message_id, id_sender, id_recipient, arguments))
-
-
-def process_data_rt(cursor: sqlite3.Cursor, fields: List[str]) -> None:
-    type = fields[1]
-    uid = fields[2]
-    data = fields[3]
-    cursor.execute("INSERT INTO rt (fk_message_uid, data) VALUES (?, ?)", (uid, data))
-
 
 with open(log_path, "r") as fd:
     while True:
@@ -142,21 +88,27 @@ with open(log_path, "r") as fd:
         if len(line) == 0:
             print("ERROR: Unexpected line: \"{0:s}\" (line is empty).".format(line))
             sys.exit(1)
-        if line.startswith("RT>"):
-            continue
-        fields: List[str] = line.split("|")
-        if not len(fields):
-            print("Unexpected line: \"{0:s}\" (line is empty).".format(line))
-            break
 
-        if fields[0] == 'M':
-            process_message(cur, fields)
+        log = json.loads(line)
+        if log['log-type'] == 'message':
+            # For the message "TERMINATE_NODE", the sender_id is not defined.
+            if log['type'] == 'TERMINATE_NODE':
+                continue
+            cursor.execute("INSERT INTO message (direction, type, uid, request_id, sender_id, recipient_id, args) "
+                           "VALUES (?, ?, ?, ?, ?, ?, ?)", (log['direction'],
+                                                            log['type'],
+                                                            log["uid"],
+                                                            log['request_id'],
+                                                            log['sender_id'],
+                                                            log['recipient_id'],
+                                                            log['args'] if 'args' in log else None))
             continue
 
-        # By design, we know that the field "message.uid" is set **BEFORE** the field "rt.fk_message_uid".
-        if fields[0] == 'D' and fields[1] == 'RT':
-            process_data_rt(cur, fields)
+        if log['log-type'] == 'data':
+            cursor.execute("INSERT INTO data (type, message_uid, node_id, data) VALUES (?, ?, ?, ?)",
+                           (log['type'], log['message_uid'], log['node_id'], log['data']))
             continue
+
 
 con.commit()
 con.close()

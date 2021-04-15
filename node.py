@@ -91,9 +91,14 @@ class Node:
         uid = Uid.uid()
         if self.__is_origin:
             raise Exception("Unexpected error: the origin does not boostrap! You have an error in your code.")
-        message = FindNode(uid, self.__local_node_id, self.__origin, Message.get_new_request_id(), self.__local_node_id)
+        message = FindNode(MessageDirection.SEND,
+                           uid,
+                           self.__local_node_id,
+                           self.__origin,
+                           Message.get_new_request_id(),
+                           self.__local_node_id)
         data = RoutingTableData(uid, self.__local_node_id, self.__routing_table.dump())
-        self.log(message.to_json(MessageDirection.SEND))
+        self.log(message.to_json())
         self.log(data.to_json())
         message.send()
         return message.request_id
@@ -112,9 +117,9 @@ class Node:
 
     def terminate(self):
         uid = Uid.uid()
-        message = TerminateNode(uid, self.__local_node_id, Message.get_new_request_id())
+        message = TerminateNode(MessageDirection.SEND, uid, self.__local_node_id, Message.get_new_request_id())
         data = RoutingTableData(uid, self.__local_node_id, self.__routing_table.dump())
-        self.log(message.to_json(MessageDirection.SEND))
+        self.log(message.to_json())
         self.log(data.to_json())
         message.send()
 
@@ -136,8 +141,9 @@ class Node:
             uid = Uid.uid()
             print("{0:04d}> Wait for a message...".format(self.__local_node_id))
             message: Message = self.__input_queue.get()
+            message.direction = MessageDirection.RECEIVE
             message.uid = uid
-            self.log(message.to_json(MessageDirection.RECEIVE))
+            self.log(message.to_json())
             processor: Callable = self.__messages_processor[message.message_type]
 
             with self.__connected_lock:
@@ -203,10 +209,11 @@ class Node:
         :param message_id: the ID of the message that triggered this action. This value is only used for
         logging purposes.
         """
-
         uid = Uid.uid()
         least_recently_seen_node_id: NodeId = self.__routing_table.get_least_recently_seen(bucket_idx)
-        message = PingNode(uid=uid,
+        # Ping the least recently node.
+        message = PingNode(direction=MessageDirection.SEND,
+                           uid=uid,
                            sender_id=self.__local_node_id,
                            recipient_id=least_recently_seen_node_id,
                            request_id=Message.get_new_request_id())
@@ -218,7 +225,7 @@ class Node:
             self.__ping_no_response(message, new_node_to_insert_id)
             return
         print("{0:04d}> [{1:08d}] {2:s}".format(self.__local_node_id, message_id, message.to_str()))
-        self.log(message.to_json(MessageDirection.SEND))
+        self.log(message.to_json())
         message.send()
         # Please don't forget to add the timeout duration to the timestamp
         # (expiration_data = nox + timeout_duration)
@@ -265,8 +272,8 @@ class Node:
 
         # Forge a response with the same message ID and send it.
         closest = self.__routing_table.find_closest(message.node_id, self.__config.id_length)
-        response = FindNodeResponse(uid, self.__local_node_id, sender_id, message_id, closest)
-        self.log(message.to_json(MessageDirection.SEND))
+        response = FindNodeResponse(MessageDirection.SEND, uid, self.__local_node_id, sender_id, message_id, closest)
+        self.log(message.to_json())
         response.send()
 
         # Add the sender ID to the routing table.
@@ -311,11 +318,12 @@ class Node:
             # The node terminated. This should not happen in this simulation, unless the node received a
             # TERMINATE_NODE message.
             return True
-        message = PingNodeResponse(uid=uid,
+        message = PingNodeResponse(direction=MessageDirection.SEND,
+                                   uid=uid,
                                    sender_id=self.__local_node_id,
                                    recipient_id=message.sender_id,
                                    request_id=message.request_id)
-        self.log(message.to_json(MessageDirection.SEND))
+        self.log(message.to_json())
         # TODO: add the sender to the routing table.
         # self.log("\n".join(["RT[{}]: {}".format(self.__local_node_id, line) for line in self.__routing_table.dump()]))
         message.send()

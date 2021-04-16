@@ -56,7 +56,8 @@ nodes = ["entity node{0:d}".format(n[0]) for n in nodes_ids]
 print("@startuml")
 print("\n".join(nodes))
 
-cursor1.execute("SELECT direction, type, uid, request_id, sender_id, recipient_id, args FROM message ORDER BY id")
+cursor1.execute("SELECT direction, type, uid, request_id, sender_id, recipient_id, args FROM message "
+                "WHERE direction='send' ORDER BY id")
 
 while True:
 

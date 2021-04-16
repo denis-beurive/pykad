@@ -140,19 +140,20 @@ class Node:
         while True:
             uid = Uid.uid()
             print("{0:04d}> Wait for a message...".format(self.__local_node_id))
+
             message: Message = self.__input_queue.get()
             message.direction = MessageDirection.RECEIVE
             message.uid = uid
             self.log(message.to_json())
-            processor: Callable = self.__messages_processor[message.message_type]
 
+            processor: Callable = self.__messages_processor[message.message_type]
             with self.__connected_lock:
                 if self.__connected:
-                    if not processor(message, uid):
+                    if not processor(message):
                         break
                 else:
                     if message.message_type in (MessageType.TERMINATE_NODE, MessageType.RECONNECT_NODE):
-                        if not processor(message, uid):
+                        if not processor(message):
                             break
 
     def __cron(self) -> None:
@@ -233,25 +234,25 @@ class Node:
                                    Timestamp(ceil(time()) + self.__config.message_ping_node_timeout),
                                    new_node_to_insert_id)
 
-    def process_terminate_node(self, message: TerminateNode, uid: Optional[int] = None) -> bool:
+    def process_terminate_node(self, message: TerminateNode) -> bool:
         print("{0:04d}> [{1:08d}] TERMINATE_NODE.".format(self.__local_node_id, message.request_id))
         QueueManager.del_queue(self.__local_node_id)
         self.__ping_supervisor.stop()
         return False
 
-    def process_disconnect_node(self, message: DisconnectNode, uid: Optional[int] = None) -> bool:
+    def process_disconnect_node(self, message: DisconnectNode) -> bool:
         print("{0:04d}> [{1:08d}] DISCONNECT_NODE.".format(self.__local_node_id, message.request_id))
         with self.__connected_lock:
             self.__connected = False
         return True
 
-    def process_reconnect_node(self, message: ReconnectNode, uid: Optional[int] = None) -> bool:
+    def process_reconnect_node(self, message: ReconnectNode) -> bool:
         print("{0:04d}> [{1:08d}] RECONNECT_NODE.".format(self.__local_node_id, message.request_id))
         with self.__connected_lock:
             self.__connected = True
         return True
 
-    def process_find_node(self, message: FindNode, uid: Optional[int] = None) -> bool:
+    def process_find_node(self, message: FindNode) -> bool:
         """
         Process a message of type FIND_NODE[target_node_id].
 
@@ -265,15 +266,15 @@ class Node:
         :param uid: unique ID that identifies the message.
         :return: always True (which means "do not stop the node").
         """
-        uid = Uid.uid()
         sender_id = message.sender_id
         message_id = message.request_id
         print("{0:04d}> [{1:08d}] Process FIND_NODE from {2:d}.".format(self.__local_node_id, message_id, sender_id))
 
         # Forge a response with the same message ID and send it.
+        uid = Uid.uid()
         closest = self.__routing_table.find_closest(message.node_id, self.__config.id_length)
         response = FindNodeResponse(MessageDirection.SEND, uid, self.__local_node_id, sender_id, message_id, closest)
-        self.log(message.to_json())
+        self.log(response.to_json())
         response.send()
 
         # Add the sender ID to the routing table.
@@ -286,14 +287,14 @@ class Node:
             self.__ping_for_replacement(bucket_idx, sender_id, message_id)
         return True
 
-    def process_find_node_response(self, message: FindNodeResponse, uid: Optional[int] = None) -> bool:
+    def process_find_node_response(self, message: FindNodeResponse) -> bool:
         print("{0:04d}> [{1:08d}] Process FIND_NODE_RESPONSE from {2:d}.".format(self.__local_node_id,
                                                                                  message.request_id,
                                                                                  message.sender_id))
         nodes_ids = message.node_ids
         print("{0:04d}> [{1:08d}] Nodes count: {2:d}".format(self.__local_node_id, message.request_id, len(nodes_ids)))
 
-        data = RoutingTableData(uid, self.__local_node_id, self.__routing_table.dump())
+        data = RoutingTableData(message.uid, self.__local_node_id, self.__routing_table.dump())
         self.log(data.to_json())
         # Insert the nodes into the routing table.
         for node_id in nodes_ids:
@@ -308,7 +309,7 @@ class Node:
             pass
         return True
 
-    def process_ping(self, message: PingNode, uid: Optional[int] = None) -> bool:
+    def process_ping(self, message: PingNode) -> bool:
         """
         Process a PING message.
         :param message: the PING message.
@@ -318,6 +319,7 @@ class Node:
             # The node terminated. This should not happen in this simulation, unless the node received a
             # TERMINATE_NODE message.
             return True
+        uid = Uid.uid()
         message = PingNodeResponse(direction=MessageDirection.SEND,
                                    uid=uid,
                                    sender_id=self.__local_node_id,

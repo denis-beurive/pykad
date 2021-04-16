@@ -5,12 +5,29 @@ from kad_types import MessageId, Timestamp
 
 
 class MessageSupervisor:
+    """
+    This class implements the message supervisor.
+
+    Messages are sent using a connection less protocol (UDP, in practice) and the sender cannot rely on
+    the underlying network infrastructure to be notified whether a message reached its destination or not.
+
+    Some messages expect a response in return while others do not. Typically, a PING message expects a response
+    while a TERMINATE message does not.
+
+    If a message that expects a response does not receive any response, that does not necessarily mean that the
+    destination disappeared. The message could have been lost on its journey from the sender node to the recipient.
+    This is why, if a node does not respond to a message that expects a response, then the message is resent a
+    certain number of times. This number is a configuration parameter. Let "N" be the value of this configuration
+    parameter. If the sender does not receive a reply after N attempts to send a message, then the sender considers
+    that the recipient has disappeared. The delay between two sending attempts is a configuration parameter.
+    """
 
     def __init__(self, clean_period: int, callback: Optional[Callable]):
         """
         Create a message supervisor.
-        :param clean_period: the cleaning period. Periodically the supervisor reviews all message and deletes the
-        messages which expiration elapsed. If a callback function has been set, then this function is called on
+        :param clean_period: the cleaning period. Periodically the supervisor reviews all messages
+        and deletes the messages which expiration elapsed.
+        If a callback function has been set, then this function is called on
         each message just after the message has been removed from the supervisor responsibility.
         :param callback: a function to execute when a message is removed from the supervisor responsibility while
         it has not been processed (that is: while its expiration data elapsed). Please note that if the value of this

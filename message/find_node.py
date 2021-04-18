@@ -6,10 +6,10 @@ from message.message import Message, MessageType, MessageDirection
 
 class FindNode(Message):
 
-    def __init__(self, direction: MessageDirection, uid: int, sender_id: NodeId, recipient_id: NodeId, request_id: MessageId, node_to_find_id: NodeId):
+    def __init__(self, uid: int, sender_id: NodeId, recipient_id: NodeId, request_id: MessageId,
+                 node_to_find_id: NodeId):
         """
         Create a new FIND_NODE message
-        :param direction:
         :param uid: message unique ID.
         :param sender_id: the ID of the node that sends the message.
         :param recipient_id: the ID of the recipient node.
@@ -17,7 +17,7 @@ class FindNode(Message):
         :param node_to_find_id: the ID of the node to find.
         """
         self.__node_to_find_id = node_to_find_id
-        super().__init__(direction, uid, request_id, MessageType.FIND_NODE, recipient_id, sender_id)
+        super().__init__(uid, request_id, MessageType.FIND_NODE, recipient_id, sender_id, str(node_to_find_id))
 
     @property
     def node_id(self) -> NodeId:
@@ -36,6 +36,4 @@ class FindNode(Message):
         self.__node_to_find_id = value
 
     def to_dict(self) -> Dict[str, Any]:
-        d = super()._to_dict()
-        d['args'] = json.dumps(self.node_id)
-        return d
+        return super()._to_dict()

@@ -3,6 +3,8 @@ from kad_config import KadConfig
 from kad_types import NodeId
 from node import Node
 from logger import Logger
+from time import sleep
+from random import randint
 
 
 Logger.init("kad.txt")
@@ -16,6 +18,7 @@ nodes: List[Node] = [Node(NodeId(i), conf, origin=origin_id) for i in range(1, 1
 
 for node in nodes:
     node.run()
+    sleep(randint(50, 300) / 1000)
 
 for node in nodes:
     node.join(timeout=1)

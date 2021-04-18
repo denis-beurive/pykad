@@ -1,9 +1,10 @@
-from typing import Optional, List
+from typing import Optional, List, Pattern, Match
 import sqlite3
 import argparse
 import os
 import sys
 import json
+import re
 
 
 SCHEMA = """
@@ -19,7 +20,7 @@ CREATE INDEX message_node_id_index ON data (node_id);
 
 CREATE TABLE message (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    direction     INTEGER NOT NULL,
+    action        TEXT,
     type          TEXT NOT NULL,
     uid           INTEGER NOT NULL,
     request_id    INTEGER NOT NULL,
@@ -27,7 +28,7 @@ CREATE TABLE message (
     recipient_id  INTEGER NOT NULL,
     args          TEXT
 );
-CREATE INDEX message_direction_index ON message (direction);
+CREATE INDEX message_action_index ON message (action);
 CREATE INDEX message_type_index ON message (type);
 CREATE INDEX uid_index ON message (uid);
 CREATE INDEX request_id_index ON message (request_id);
@@ -77,6 +78,9 @@ except sqlite3.Error as e:
 
 # Parse the LOG file and load the database.
 
+comment: Pattern = re.compile('^#')
+
+
 with open(log_path, "r") as fd:
     while True:
         line: Optional[str] = fd.readline()
@@ -88,14 +92,17 @@ with open(log_path, "r") as fd:
         if len(line) == 0:
             print("ERROR: Unexpected line: \"{0:s}\" (line is empty).".format(line))
             sys.exit(1)
+        m: Optional[Match] = comment.match(line)
+        if m is not None:
+            continue
 
         log = json.loads(line)
         if log['log-type'] == 'message':
             # For the message "TERMINATE_NODE", the sender_id is not defined.
             if log['type'] == 'TERMINATE_NODE':
                 continue
-            cursor.execute("INSERT INTO message (direction, type, uid, request_id, sender_id, recipient_id, args) "
-                           "VALUES (?, ?, ?, ?, ?, ?, ?)", (log['direction'],
+            cursor.execute("INSERT INTO message (action, type, uid, request_id, sender_id, recipient_id, args) "
+                           "VALUES (?, ?, ?, ?, ?, ?, ?)", (log['action'],
                                                             log['type'],
                                                             log["uid"],
                                                             log['request_id'],

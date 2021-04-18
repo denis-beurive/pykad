@@ -19,6 +19,11 @@ class MessageType(Enum):
 
 
 class MessageDirection(Enum):
+    REQUEST = "request"
+    RESPONSE = "response"
+
+
+class MessageAction(Enum):
     SEND = "send"
     RECEIVE = "receive"
 
@@ -46,30 +51,25 @@ class Message(ABC):
         MessageType.RECONNECT_NODE: "RECONNECT_NODE"
     }
 
-    def __init__(self,
-                 direction: MessageDirection,
-                 uid: int,
-                 request_id: MessageId,
-                 message_type: MessageType,
-                 recipient_id: NodeId,
-                 sender_id: Optional[NodeId] = None):
+    def __init__(self, uid: int, request_id: MessageId, message_type: MessageType, recipient_id: NodeId,
+                 sender_id: Optional[NodeId] = None, args: Optional[str] = None):
         """
         Create a message.
-        :param direction: the direction (send or receive).
         :param uid: message unique ID.
         :param request_id: the (unique) ID of the request.
         :param message_type: the type of the message.
         :param recipient_id: the ID of the recipient node.
         :param sender_id: the ID of the node that sends the message. Please note that the value of this
+        :param args: the message argument (if any).
         parameter may be None. The value None is used for administrative messages that are not sent by nodes
         (typical example: the message that asks the recipient node to terminate its execution).
         """
-        self.__direction = direction
         self.__uid = uid
         self.__request_id = request_id
         self.__message_type = message_type
         self.__recipient_id = recipient_id
         self.__sender_id = sender_id
+        self.__args = args
 
     @staticmethod
     def get_new_request_id() -> MessageId:
@@ -80,14 +80,6 @@ class Message(ABC):
         with Message.__lock:
             Message.__request_id_reference += 1
             return MessageId(Message.__request_id_reference)
-
-    @property
-    def direction(self) -> MessageDirection:
-        return self.__direction
-
-    @direction.setter
-    def direction(self, value: MessageDirection) -> None:
-        self.__direction = value
 
     @property
     def sender_id(self) -> NodeId:
@@ -129,6 +121,14 @@ class Message(ABC):
     def uid(self, value: int) -> None:
         self.__uid = value
 
+    @property
+    def args(self) -> Optional[str]:
+        return self.__args
+
+    @args.setter
+    def args(self, value: Optional[str]) -> None:
+        self.__args = value
+
     def message_type_str(self):
         return Message.__types_to_str[self.__message_type]
 
@@ -139,12 +139,12 @@ class Message(ABC):
     def _to_dict(self) -> Dict[str, Any]:
         return {
             'log-type': 'message',
-            'direction': self.__direction.value,
             'type': self.message_type_str(),
             'uid': self.uid,
             'request_id': self.request_id,
             'sender_id': None if self.__sender_id is None else "{:d}".format(self.__sender_id),
-            'recipient_id': self.__recipient_id
+            'recipient_id': self.__recipient_id,
+            'args': self.__args
         }
 
     @abstractmethod
@@ -153,3 +153,4 @@ class Message(ABC):
 
     def to_json(self) -> str:
         return dumps(self.to_dict())
+

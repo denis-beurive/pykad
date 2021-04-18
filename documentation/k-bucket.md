@@ -1,4 +1,3 @@
-
 # k-buckets management
 
 ![](images/k-bucket-1.png)

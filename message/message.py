@@ -37,6 +37,7 @@ class Message(ABC):
     - the type of the message.
     - the ID of of the sender.
     - the ID of the recipient.
+    - a request ID.
     """
 
     __lock: Lock = Lock()
@@ -79,9 +80,9 @@ class Message(ABC):
         :param message_name: the type of the message.
         :param recipient_id: the ID of the recipient node.
         :param sender_id: the ID of the node that sends the message. Please note that the value of this
-        :param args: the message argument (if any).
-        parameter may be None. The value None is used for administrative messages that are not sent by nodes
-        (typical example: the message that asks the recipient node to terminate its execution).
+        :param args: the message argument (if any). The value of this parameter may be None. The value None is used
+        for administrative messages that are not sent by nodes (typical example: the message that asks the recipient
+        node to terminate its execution).
         """
         self.__uid: int = uid
         self.__request_id: MessageId = request_id

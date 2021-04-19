@@ -1,10 +1,12 @@
 from typing import Dict, Any
-import json
 from kad_types import NodeId, MessageId
-from message.message import Message, MessageType, MessageDirection
+from message.message import Message, MessageName
 
 
 class FindNode(Message):
+    """
+    This class represents a FIND_NODE message.
+    """
 
     def __init__(self, uid: int, sender_id: NodeId, recipient_id: NodeId, request_id: MessageId,
                  node_to_find_id: NodeId):
@@ -17,7 +19,7 @@ class FindNode(Message):
         :param node_to_find_id: the ID of the node to find.
         """
         self.__node_to_find_id = node_to_find_id
-        super().__init__(uid, request_id, MessageType.FIND_NODE, recipient_id, sender_id, str(node_to_find_id))
+        super().__init__(uid, request_id, MessageName.FIND_NODE, recipient_id, sender_id, str(node_to_find_id))
 
     @property
     def node_id(self) -> NodeId:

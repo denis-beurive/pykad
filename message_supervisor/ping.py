@@ -6,6 +6,8 @@ from message_supervisor.message_supervisor import MessageSupervisor
 
 class Ping(MessageSupervisor):
     """
+    This class implements the supervisor for PING messages.
+
     The PING message is a two steps process:
 
     1. first, a node is tested for existence.
@@ -57,5 +59,9 @@ class Ping(MessageSupervisor):
         return None if data is None else data
 
     def delete(self, message_id: MessageId) -> None:
+        """
+        Remove a PING message (identified by its ID) from the supervisor responsibility.
+        :param message_id: the ID of the message to remove from the supervisor responsibility.
+        """
         super()._del(message_id)
 

@@ -21,7 +21,7 @@ CREATE INDEX message_node_id_index ON data (node_id);
 CREATE TABLE message (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     action        TEXT,
-    type          TEXT NOT NULL,
+    name          TEXT NOT NULL,
     uid           INTEGER NOT NULL,
     request_id    INTEGER NOT NULL,
     sender_id     INTEGER NOT NULL,
@@ -29,7 +29,7 @@ CREATE TABLE message (
     args          TEXT
 );
 CREATE INDEX message_action_index ON message (action);
-CREATE INDEX message_type_index ON message (type);
+CREATE INDEX message_type_index ON message (name);
 CREATE INDEX uid_index ON message (uid);
 CREATE INDEX request_id_index ON message (request_id);
 CREATE INDEX sender_id_index ON message (sender_id);
@@ -99,11 +99,11 @@ with open(log_path, "r") as fd:
         log = json.loads(line)
         if log['log-type'] == 'message':
             # For the message "TERMINATE_NODE", the sender_id is not defined.
-            if log['type'] == 'TERMINATE_NODE':
+            if log['name'] == 'TERMINATE_NODE':
                 continue
-            cursor.execute("INSERT INTO message (action, type, uid, request_id, sender_id, recipient_id, args) "
+            cursor.execute("INSERT INTO message (action, name, uid, request_id, sender_id, recipient_id, args) "
                            "VALUES (?, ?, ?, ?, ?, ?, ?)", (log['action'],
-                                                            log['type'],
+                                                            log['name'],
                                                             log["uid"],
                                                             log['request_id'],
                                                             log['sender_id'],

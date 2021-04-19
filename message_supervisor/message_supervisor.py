@@ -2,9 +2,11 @@ from threading import Thread, Lock
 from time import sleep, time
 from typing import Dict, Tuple, List, Any, Optional, Callable
 from kad_types import MessageId, Timestamp
+from abc import ABC, abstractmethod
+from message.message import Message, NodeId
 
 
-class MessageSupervisor:
+class MessageSupervisor(ABC):
     """
     This class implements the message supervisor.
 
@@ -43,6 +45,10 @@ class MessageSupervisor:
         self.__cleaner_thread.start()
 
     def __cleaner(self) -> None:
+        """
+        The "cleaner thread": this thread periodically looks for unanswered PING messages.
+        If it finds unanswered PING messages, then it executes the given callback (`self.__messages`).
+        """
         while True:
 
             # Please note that you should wait prior to any other treatment.
@@ -71,6 +77,14 @@ class MessageSupervisor:
                 break
 
     def _add(self, message_id: MessageId, expiration_timestamp: Timestamp, args: List[Any]) -> None:
+        """
+        Add a message to the supervisor responsibility.
+        :param message_id: the message to add.
+        :param expiration_timestamp: the message expiration date. After this date, it is considered
+        that the message has not been answered.
+        :param args: the arguments to pass to the callback function that is executed on a message if
+        the expiry date for this message has passed.
+        """
         if message_id in self.__messages:
             raise Exception("Unexpected error: the message ID {0:d} is already in use! Please note that this error "
                             "should not happen.".format(message_id))
@@ -94,6 +108,10 @@ class MessageSupervisor:
             return data
 
     def _del(self, message_id: MessageId) -> None:
+        """
+        Remove a message from the supervisor responsibility.
+        :param message_id: the ID of the message to remove.
+        """
         with self.__lock:
             if message_id in self.__messages:
                 del self.__messages[message_id]
@@ -105,3 +123,39 @@ class MessageSupervisor:
         with self.__lock:
             self.__continue = False
 
+    @abstractmethod
+    def add(self,
+            message: Message,
+            expiration_timestamp: Timestamp,
+            replacement_node_id: Optional[NodeId] = None) -> None:
+        """
+        Place a new message under the supervisor responsibility.
+        :param message: the message to supervise.
+        :param expiration_timestamp: the date beyond which the message expires.
+        :param replacement_node_id: the ID of the node that should replace the pinged node in the routing table.
+        Please note that this parameter is optional.
+        """
+        pass
+
+    @abstractmethod
+    def get(self, message_id: MessageId, auto_remove: bool = True) -> Optional[Tuple[MessageId, Optional[NodeId]]]:
+        """
+        Return the message associated with a given message ID.
+        :param message_id: the message ID.
+        :param auto_remove: flag that tells the method whether the message context must be removed from the
+        supervisor responsibility or not. The value True indicates that the message context will be removed from
+        the supervisor responsibility.
+        :return: if the message ID is found, the method returns a tuple that contains 2 elements:
+        - the message associated with a given message ID.
+        - the replacement node (please note that the value of this element may be None).
+        Otherwise, the method returns the value None.
+        """
+        pass
+
+    @abstractmethod
+    def delete(self, message_id: MessageId) -> None:
+        """
+        Remove a message (identified by its ID) from the supervisor responsibility.
+        :param message_id: the ID of the message to remove from the supervisor responsibility.
+        """
+        pass

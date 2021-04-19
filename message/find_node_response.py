@@ -1,15 +1,18 @@
 from typing import Dict, Any, List
 import json
-from message.message import Message, MessageType, MessageDirection
+from message.message import Message, MessageName, MessageType
 from kad_types import NodeId, MessageId
 
 
 class FindNodeResponse(Message):
+    """
+    This class represents the response to a FIND_NODE message.
+    """
 
     def __init__(self, uid: int, sender_id: NodeId, recipient_id: NodeId, request_id: MessageId,
                  node_ids: List[NodeId]):
         self.__node_ids = node_ids
-        super().__init__(uid, request_id, MessageType.FIND_NODE_RESPONSE, recipient_id, sender_id, json.dumps(node_ids))
+        super().__init__(uid, request_id, MessageName.FIND_NODE_RESPONSE, recipient_id, sender_id, json.dumps(node_ids))
 
     @property
     def node_ids(self) -> List[NodeId]:

@@ -1,6 +1,6 @@
 from typing import Dict, Any
 from kad_types import NodeId, MessageId
-from message.message import Message, MessageType, MessageDirection
+from message.message import Message, MessageName, MessageType
 
 
 class PingNode(Message):
@@ -16,7 +16,7 @@ class PingNode(Message):
         :param recipient_id: the ID of the recipient node. This is the ID of the node to ping.
         :param request_id: the message (unique) ID.
         """
-        super().__init__(uid, request_id, MessageType.PING_NODE, recipient_id, sender_id, str(recipient_id))
+        super().__init__(uid, request_id, MessageName.PING_NODE, recipient_id, sender_id, str(recipient_id))
 
     def to_str(self) -> str:
         return "PING({0:08d}: {1:d} -> {2:d})".format(self.request_id, self.sender_id, self.recipient)

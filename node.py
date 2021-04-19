@@ -14,7 +14,7 @@ from message.disconnect_node import DisconnectNode
 from message.reconnect_node import ReconnectNode
 from message.ping_node import PingNode
 from message.ping_node_reponse import PingNodeResponse
-from message.message import MessageType, Message, MessageAction
+from message.message import MessageName, Message, MessageAction
 from queue_manager import QueueManager
 from message_supervisor.ping import Ping as PingSupervisor
 from logger import Logger
@@ -52,14 +52,14 @@ class Node:
         QueueManager.add_queue(self.__local_node_id, self.__input_queue)
         if not self.__is_origin:
             self.__routing_table.add_node(self.__origin)
-        self.__messages_processor: Dict[MessageType, Callable] = {
-            MessageType.TERMINATE_NODE: self.__process_terminate_node,
-            MessageType.FIND_NODE: self.__process_find_node,
-            MessageType.FIND_NODE_RESPONSE: self.__process_find_node_response,
-            MessageType.PING_NODE: self.__process_ping_node,
-            MessageType.PING_NODE_RESPONSE: self.__process_ping_node_response,
-            MessageType.DISCONNECT_NODE: self.__process_disconnect_node,
-            MessageType.RECONNECT_NODE: self.__process_reconnect_node
+        self.__messages_processor: Dict[MessageName, Callable] = {
+            MessageName.TERMINATE_NODE: self.__process_terminate_node,
+            MessageName.FIND_NODE: self.__process_find_node,
+            MessageName.FIND_NODE_RESPONSE: self.__process_find_node_response,
+            MessageName.PING_NODE: self.__process_ping_node,
+            MessageName.PING_NODE_RESPONSE: self.__process_ping_node_response,
+            MessageName.DISCONNECT_NODE: self.__process_disconnect_node,
+            MessageName.RECONNECT_NODE: self.__process_reconnect_node
         }
         """This property associates a type of message with a method used to process it."""
 
@@ -92,9 +92,7 @@ class Node:
         if self.__is_origin:
             raise Exception("Unexpected error: the origin does not boostrap! You have an error in your code.")
         message = FindNode(uid, self.__local_node_id, self.__origin, Message.get_new_request_id(), self.__local_node_id)
-        data = RoutingTableData(uid, self.__local_node_id, self.__routing_table.dump())
         Logger.log_message(message, MessageAction.SEND, "bootstrap")
-        Logger.log_data(data.to_json(), "bootstrap")
         message.send()
         return message.request_id
 
@@ -130,22 +128,21 @@ class Node:
         the method executes the suitable message handler.
         """
         while True:
-            uid = Uid.uid()
             print("{0:04d}> Wait for a message...".format(self.__local_node_id))
 
             # Extract a message from the input queue.
             # Set the "direction" and the "unique ID" properties, and then LOG the message.
             message: Message = self.__input_queue.get()
-            Logger.log_message(message, MessageAction.RECEIVE, "listener")
+            # Logger.log_message(message, MessageAction.RECEIVE, "listener")
 
             # Execute the suitable message handler.
-            processor: Callable = self.__messages_processor[message.message_type]
+            processor: Callable = self.__messages_processor[message.message_name]
             with self.__connected_lock:
                 if self.__connected:
                     if not processor(message):
                         break
                 else:
-                    if message.message_type in (MessageType.TERMINATE_NODE, MessageType.RECONNECT_NODE):
+                    if message.message_name in (MessageName.TERMINATE_NODE, MessageName.RECONNECT_NODE):
                         if not processor(message):
                             break
 
@@ -206,7 +203,9 @@ class Node:
         uid = Uid.uid()
         least_recently_seen_node_id: NodeId = self.__routing_table.get_least_recently_seen(bucket_idx)
         # Ping the least recently node.
-        message = PingNode(uid=uid, sender_id=self.__local_node_id, recipient_id=least_recently_seen_node_id,
+        message = PingNode(uid=uid,
+                           sender_id=self.__local_node_id,
+                           recipient_id=least_recently_seen_node_id,
                            request_id=Message.get_new_request_id())
         target_queue: Queue = QueueManager.get_queue(least_recently_seen_node_id)
         if target_queue is None:
@@ -264,7 +263,6 @@ class Node:
         uid = Uid.uid()
         closest = self.__routing_table.find_closest(message.node_id, self.__config.id_length)
         response = FindNodeResponse(uid, self.__local_node_id, sender_id, message_id, closest)
-        Logger.log_message(response, MessageAction.SEND, "process_find_node")
         response.send()
 
         # Add the sender ID to the routing table.
@@ -272,7 +270,6 @@ class Node:
         print("{0:04d}> [{1:08d}] Node added: <{2:s}>.".format(self.__local_node_id,
                                                                message_id,
                                                                "yes" if added else "no"))
-        # self.log("RT[{}]: {}".format(self.__local_node_id, self.__routing_table.dump()))
         if not added and not already_in:
             self.__ping_for_replacement(bucket_idx, sender_id, message_id)
         return True
@@ -281,6 +278,7 @@ class Node:
         print("{0:04d}> [{1:08d}] Process FIND_NODE_RESPONSE from {2:d}.".format(self.__local_node_id,
                                                                                  message.request_id,
                                                                                  message.sender_id))
+        Logger.log_message(message, MessageAction.RECEIVE, "__process_find_node_response")
         nodes_ids = message.node_ids
         print("{0:04d}> [{1:08d}] Nodes count: {2:d}".format(self.__local_node_id, message.request_id, len(nodes_ids)))
 
@@ -312,10 +310,12 @@ class Node:
         uid = Uid.uid()
         response = PingNodeResponse(uid=uid, sender_id=self.__local_node_id, recipient_id=message.sender_id,
                                     request_id=message.request_id)
-        Logger.log_message(response, MessageAction.SEND, "process_ping")
-        # TODO: add the sender to the routing table.
-        # self.log("\n".join(["RT[{}]: {}".format(self.__local_node_id, line) for line in self.__routing_table.dump()]))
         response.send()
+
+        # TODO: should we add the sender node ID to the routing table ?
+        #       Please note that adding the sender node ID to the routing table may cause infinite loop!
+        #       => A priori, we should not add the sender node ID to the routing table.
+
         return True
 
     def __process_ping_node_response(self, message: PingNodeResponse) -> bool:
@@ -324,6 +324,7 @@ class Node:
                                                                                  message.sender_id))
 
         # Please don't forget remove the message from the PING supervisor.
+        Logger.log_message(message, MessageAction.RECEIVE, "__process_ping_node_response")
         self.__ping_supervisor.delete(message.request_id)
         self.__routing_table.set_least_recently_seen(message.sender_id)
         data = RoutingTableData(message.uid, self.__local_node_id, self.__routing_table.dump())

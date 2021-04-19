@@ -65,19 +65,29 @@ def get_log(cursor: sqlite3.Cursor) -> Optional[Dict[str, Any]]:
 
 
 def has_response(connexion: sqlite3.Connection, request_id: int) -> bool:
+    """
+    Test whether an SQL request has a response or not.
+    :param connexion: the connection handler to SQLite.
+    :param request_id: the request ID.
+    :return: if the message has a response, the function returns the value True.
+    Otherwise, it returns the value False.
+    """
     cursor = sqlite3.Cursor = connexion.cursor()
     cursor.execute("SELECT id FROM message WHERE action='receive' AND request_id=?", (request_id,))
     # print("SELECT id FROM message WHERE action='receive' AND request_id={}".format(request_id,))
     count = len(cursor.fetchall())
-    if count > 2:
-        raise Exception("ERROR: SELECT id FROM message WHERE action='receive' AND request_id={} "
-                        "=> count > 1".format(log["request_id"]))
-    return count > 1
+    if count > 1:
+        raise Exception("ERROR: SELECT id FROM message WHERE action='receive' AND request_id={}"
+                        "=> count > 1".format(request_id,))
+    return count > 0
 
 
-def get_data(connexion: sqlite3.Connection, uid: int) -> Optional[Dict[str, Any]]:
+def get_data(connexion: sqlite3.Connection, message_uid: int) -> Optional[Dict[str, Any]]:
     cursor = sqlite3.Cursor = connexion.cursor()
-    cursor.execute("SELECT id, type, node_id, data FROM data WHERE message_uid=?", (uid,))
+    cursor.execute("SELECT data.id, data.type, data.node_id, data.data "
+                   "FROM data, message "
+                   "WHERE data.message_uid=? AND message.uid=? and message.action='receive'",
+                   (message_uid, message_uid,))
     entry = cursor.fetchone()
     if entry is None:
         return None
@@ -111,8 +121,7 @@ nodes = get_nodes(con)
 print("@startuml")
 print("\n".join(nodes))
 
-cursor1.execute("SELECT action, type, uid, request_id, sender_id, recipient_id, args FROM message WHERE "
-                "action='receive' ORDER BY id")
+cursor1.execute("SELECT action, name, uid, request_id, sender_id, recipient_id, args FROM message ORDER BY id")
 
 while True:
 
@@ -121,9 +130,14 @@ while True:
         break
 
     data = get_data(con, log["uid"])
-    message_has_response = has_response(con, log["request_id"])
+
     color = type2color(log["type"])
-    arrow = "-[{:s}]>".format(color) if message_has_response else "-[{:s}]>X".format(color)
+    if log['action'] == 'send':
+        message_has_response = has_response(con, log["request_id"])
+        arrow = "-[{:s}]>".format(color) if message_has_response else "-[{:s}]>X".format(color)
+    else:
+        arrow = "-[{:s}]>".format(color)
+
     print("node{0:d} {1:s} node{2:d}:[{4:d}] {3:s}".format(log["sender_id"],
                                                            arrow,
                                                            log["recipient_id"],

@@ -1,7 +1,7 @@
 from threading import Thread, Lock
 from time import sleep, time
 from typing import Dict, Tuple, List, Any, Optional, Callable
-from kad_types import MessageId, Timestamp
+from kad_types import MessageRequestId, Timestamp
 from abc import ABC, abstractmethod
 from message.message import Message, NodeId
 
@@ -38,7 +38,7 @@ class MessageSupervisor(ABC):
         """
         self.__clean_period: int = clean_period
         self.__callback: Optional[Callable] = callback
-        self.__messages: Dict[MessageId, Tuple[Timestamp, List[Any]]] = {}
+        self.__messages: Dict[MessageRequestId, Tuple[Timestamp, List[Any]]] = {}
         self.__lock = Lock()
         self.__continue = True
         self.__cleaner_thread: Thread = Thread(target=self.__cleaner, args=[])
@@ -56,7 +56,7 @@ class MessageSupervisor(ABC):
 
             sleep(self.__clean_period)
 
-            to_remove: List[MessageId] = []
+            to_remove: List[MessageRequestId] = []
             with self.__lock:
 
                 # Please note: you cannot modify the size of a dictionary while iterating it.
@@ -76,7 +76,7 @@ class MessageSupervisor(ABC):
             if not again:
                 break
 
-    def _add(self, message_id: MessageId, expiration_timestamp: Timestamp, args: List[Any]) -> None:
+    def _add(self, message_id: MessageRequestId, expiration_timestamp: Timestamp, args: List[Any]) -> None:
         """
         Add a message to the supervisor responsibility.
         :param message_id: the message to add.
@@ -91,7 +91,7 @@ class MessageSupervisor(ABC):
         with self.__lock:
             self.__messages[message_id] = (expiration_timestamp, args)
 
-    def _get(self, message_id: MessageId, auto_remove: bool) -> Optional[List[Any]]:
+    def _get(self, message_id: MessageRequestId, auto_remove: bool) -> Optional[List[Any]]:
         """
         Get the arguments that must be given to a callback function designed to process an unanswered message.
         :param message_id: the ID of the message that must be given to a callback function.
@@ -107,7 +107,7 @@ class MessageSupervisor(ABC):
                     del self.__messages[message_id]
             return data
 
-    def _del(self, message_id: MessageId) -> None:
+    def _del(self, message_id: MessageRequestId) -> None:
         """
         Remove a message from the supervisor responsibility.
         :param message_id: the ID of the message to remove.
@@ -138,7 +138,7 @@ class MessageSupervisor(ABC):
         pass
 
     @abstractmethod
-    def get(self, message_id: MessageId, auto_remove: bool = True) -> Optional[Tuple[MessageId, Optional[NodeId]]]:
+    def get(self, message_id: MessageRequestId, auto_remove: bool = True) -> Optional[Tuple[MessageRequestId, Optional[NodeId]]]:
         """
         Return the message associated with a given message ID.
         :param message_id: the message ID.
@@ -153,7 +153,7 @@ class MessageSupervisor(ABC):
         pass
 
     @abstractmethod
-    def delete(self, message_id: MessageId) -> None:
+    def delete(self, message_id: MessageRequestId) -> None:
         """
         Remove a message (identified by its ID) from the supervisor responsibility.
         :param message_id: the ID of the message to remove from the supervisor responsibility.

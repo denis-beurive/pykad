@@ -1,5 +1,5 @@
 from typing import Optional, Callable, Tuple
-from kad_types import MessageId, NodeId, Timestamp
+from kad_types import MessageRequestId, NodeId, Timestamp
 from message.ping_node import PingNode
 from message_supervisor.message_supervisor import MessageSupervisor
 
@@ -41,7 +41,7 @@ class Ping(MessageSupervisor):
         """
         super()._add(message.request_id, expiration_timestamp, [message, replacement_node_id])
 
-    def get(self, message_id: MessageId, auto_remove: bool = True) -> Optional[Tuple[PingNode, Optional[NodeId]]]:
+    def get(self, message_id: MessageRequestId, auto_remove: bool = True) -> Optional[Tuple[PingNode, Optional[NodeId]]]:
         """
         Return the message associated with a given PING message ID.
         :param message_id: the message ID.
@@ -58,7 +58,7 @@ class Ping(MessageSupervisor):
         data: Optional[Tuple[PingNode, Optional[NodeId]]] = super()._get(message_id, auto_remove)
         return None if data is None else data
 
-    def delete(self, message_id: MessageId) -> None:
+    def delete(self, message_id: MessageRequestId) -> None:
         """
         Remove a PING message (identified by its ID) from the supervisor responsibility.
         :param message_id: the ID of the message to remove from the supervisor responsibility.

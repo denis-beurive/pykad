@@ -1,5 +1,5 @@
 from typing import Dict, Any
-from kad_types import NodeId, MessageId
+from kad_types import NodeId, MessageRequestId
 from message.message import Message, MessageName, MessageType
 
 
@@ -8,7 +8,7 @@ class PingNode(Message):
     This class implements a PING message.
     """
 
-    def __init__(self, uid: int, sender_id: NodeId, recipient_id: NodeId, request_id: MessageId):
+    def __init__(self, uid: int, sender_id: NodeId, recipient_id: NodeId, request_id: MessageRequestId):
         """
         Create a new PING message.
         :param uid: message unique ID.

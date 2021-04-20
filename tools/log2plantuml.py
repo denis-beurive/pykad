@@ -1,3 +1,19 @@
+"""
+Generate a PlantUML sequence diagram from the LOG SQLite database.
+
+Please note that a message is logged in these 2 situations only:
+    * the sender LOGs a request message when it is sent.
+    * the recipient LOGs a response message when it is received.
+
+          LOG                        NOT LOG
+           |                            |
+       [sender] ----[request]----> [recipient]
+       [sender] <---[response]---- [recipient]
+           |                            |
+          LOG                        NOT LOG
+
+"""
+
 from typing import Dict, Optional, List, Any
 import sys
 import sqlite3
@@ -82,21 +98,31 @@ def has_response(connexion: sqlite3.Connection, request_id: int) -> bool:
     return count > 0
 
 
-def get_data(connexion: sqlite3.Connection, message_uid: int) -> Optional[Dict[str, Any]]:
+def get_data(connexion: sqlite3.Connection, message_uid: int) -> List[Dict[str, Any]]:
+    """
+    Get the data bound to a given message identified by its message UID.
+    :param connexion: the SQLite connector.
+    :param message_uid: The message UID.
+    :return: the list of data.
+    """
     cursor = sqlite3.Cursor = connexion.cursor()
     cursor.execute("SELECT data.id, data.type, data.node_id, data.data "
                    "FROM data, message "
-                   "WHERE data.message_uid=? AND message.uid=? and message.action='receive'",
+                   "WHERE data.message_uid=? AND message.uid=?",
                    (message_uid, message_uid,))
-    entry = cursor.fetchone()
-    if entry is None:
-        return None
-    return {
-        "id": entry[0],
-        "type": entry[1],
-        "node_id": entry[2],
-        "data": entry[3]
-    }
+
+    result: List[Dict[str, Any]] = []
+    while True:
+        entry = cursor.fetchone()
+        if entry is None:
+            break
+        result.append({
+            "id": entry[0],
+            "type": entry[1],
+            "node_id": entry[2],
+            "data": entry[3]
+        })
+    return result
 
 
 # Parse the command line.
@@ -138,17 +164,20 @@ while True:
     else:
         arrow = "-[{:s}]>".format(color)
 
-    print("node{0:d} {1:s} node{2:d}:[{4:d}] {3:s}".format(log["sender_id"],
-                                                           arrow,
-                                                           log["recipient_id"],
-                                                           log["type"],
-                                                           log["request_id"]))
+    args = "" if log["args"] is None else log["args"]
 
-    if type == "FIND_NODE_RESPONSE":
-        print("rnote over node{:d}: {:s}".format(log["recipient_id"], "no data" if (args is None) else args))
+    print("node{0:d} {1:s} node{2:d}:[{3:d}] {4:s} <{5:s}>".format(log["sender_id"],
+                                                                   arrow,
+                                                                   log["recipient_id"],
+                                                                   log["request_id"],
+                                                                   log["type"],
+                                                                   args))
 
-    if data is not None:
-        print("rnote over node{:d}: {:s} {:s}".format(data['node_id'], data['type'], data["data"]))
+    if len(data) > 0:
+        prefix = ""
+        for d in data:
+            print("{:s}note over node{:d}:{:s}".format(prefix, d['node_id'], d["data"]))
+            prefix = " / "
 
 
 print("@endtuml")

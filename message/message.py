@@ -1,6 +1,6 @@
 from typing import Optional, Dict, Any
 from abc import ABC, abstractmethod
-from kad_types import MessageId, NodeId
+from kad_types import MessageRequestId, NodeId
 from enum import Enum
 from threading import Lock
 from queue import Queue
@@ -71,7 +71,7 @@ class Message(ABC):
         MessageName.RECONNECT_NODE.value: MessageType.REQUEST
     }
 
-    def __init__(self, uid: int, request_id: MessageId, message_name: MessageName, recipient_id: NodeId,
+    def __init__(self, uid: int, request_id: MessageRequestId, message_name: MessageName, recipient_id: NodeId,
                  sender_id: Optional[NodeId] = None, args: Optional[str] = None):
         """
         Create a message.
@@ -85,21 +85,21 @@ class Message(ABC):
         node to terminate its execution).
         """
         self.__uid: int = uid
-        self.__request_id: MessageId = request_id
+        self.__request_id: MessageRequestId = request_id
         self.__message_name: MessageName = message_name
         self.__recipient_id: NodeId = recipient_id
         self.__sender_id: NodeId = sender_id
         self.__args: Optional[str] = args
 
     @staticmethod
-    def get_new_request_id() -> MessageId:
+    def get_new_request_id() -> MessageRequestId:
         """
         Generate a new unique request ID.
         :return: a new unique request ID.
         """
         with Message.__lock:
             Message.__request_id_reference += 1
-            return MessageId(Message.__request_id_reference)
+            return MessageRequestId(Message.__request_id_reference)
 
     @staticmethod
     def name_to_type(name: str) -> MessageType:
@@ -127,11 +127,11 @@ class Message(ABC):
         self.__recipient_id = value
 
     @property
-    def request_id(self) -> MessageId:
+    def request_id(self) -> MessageRequestId:
         return self.__request_id
 
     @request_id.setter
-    def request_id(self, value: MessageId) -> None:
+    def request_id(self, value: MessageRequestId) -> None:
         self.__request_id = value
 
     @property

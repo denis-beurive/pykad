@@ -3,7 +3,7 @@ from threading import Thread, Lock, RLock
 from queue import Queue
 from time import time
 from math import ceil
-from kad_types import NodeId, MessageId, Timestamp
+from kad_types import NodeId, MessageRequestId, Timestamp
 from node_data import NodeData
 from kad_config import KadConfig
 from routing_table import RoutingTable
@@ -83,7 +83,7 @@ class Node:
             print("{0:04d}> Bootstrap".format(self.__local_node_id))
             self.__boostrap_message_id = self.__bootstrap()
 
-    def __bootstrap(self) -> MessageId:
+    def __bootstrap(self) -> MessageRequestId:
         """
         Send the initial FIND_NODE message used to bootstrap the local node.
         :return: the request ID that uniquely identifies the message.
@@ -133,7 +133,6 @@ class Node:
             # Extract a message from the input queue.
             # Set the "direction" and the "unique ID" properties, and then LOG the message.
             message: Message = self.__input_queue.get()
-            # Logger.log_message(message, MessageAction.RECEIVE, "listener")
 
             # Execute the suitable message handler.
             processor: Callable = self.__messages_processor[message.message_name]
@@ -185,7 +184,7 @@ class Node:
     def __ping_for_replacement(self,
                                bucket_idx: int,
                                new_node_to_insert_id: NodeId,
-                               message_id: MessageId) -> None:
+                               message_request_id: MessageRequestId) -> None:
         """
         Ping a node in the context when we try to insert a new node into a full bucket.
         In this context, the procedure is the following:
@@ -197,8 +196,8 @@ class Node:
             and the least recently seen node becomes the most recently seen node.
         :param bucket_idx: the index of the bucket we want to insert the new node into.
         :param new_node_to_insert_id: the ID of the new node (to insert into the bucket).
-        :param message_id: the ID of the message that triggered this action. This value is only used for
-        logging purposes.
+        :param message_request_id: the request ID of the message that triggered this action. This value
+        is only used for logging purposes.
         """
         uid = Uid.uid()
         least_recently_seen_node_id: NodeId = self.__routing_table.get_least_recently_seen(bucket_idx)
@@ -210,11 +209,11 @@ class Node:
         target_queue: Queue = QueueManager.get_queue(least_recently_seen_node_id)
         if target_queue is None:
             print("{0:04d}> [{1:08d}] The queue for node {2:d} does not exist.".format(self.__local_node_id,
-                                                                                       message_id,
+                                                                                       message_request_id,
                                                                                        least_recently_seen_node_id))
             self.__ping_no_response(message, new_node_to_insert_id)
             return
-        print("{0:04d}> [{1:08d}] {2:s}".format(self.__local_node_id, message_id, message.to_str()))
+        print("{0:04d}> [{1:08d}] {2:s}".format(self.__local_node_id, message_request_id, message.to_str()))
         Logger.log_message(message, MessageAction.SEND, "ping_for_replacement")
         message.send()
         # Please don't forget to add the timeout duration to the timestamp
@@ -265,13 +264,10 @@ class Node:
         response = FindNodeResponse(uid, self.__local_node_id, sender_id, message_id, closest)
         response.send()
 
-        # Add the sender ID to the routing table.
-        added, already_in, bucket_idx = self.__routing_table.add_node(sender_id)
-        print("{0:04d}> [{1:08d}] Node added: <{2:s}>.".format(self.__local_node_id,
-                                                               message_id,
-                                                               "yes" if added else "no"))
-        if not added and not already_in:
-            self.__ping_for_replacement(bucket_idx, sender_id, message_id)
+        # Add the sender ID to the routing table and dump the routing table.
+        self.__add_node_id_to_routing_table(sender_id, message_id)
+        data = RoutingTableData(message.uid, self.__local_node_id, self.__routing_table.dump())
+        Logger.log_data(data.to_json(), "__process_find_node")
         return True
 
     def __process_find_node_response(self, message: FindNodeResponse) -> bool:
@@ -299,7 +295,7 @@ class Node:
 
     def __process_ping_node(self, message: PingNode) -> bool:
         """
-        Process a PING message.
+        Process a PING message: send a response.
         :param message: the PING message.
         :return: the method always returns the value True (which means that the local node should continue to run).
         """
@@ -312,10 +308,10 @@ class Node:
                                     request_id=message.request_id)
         response.send()
 
-        # TODO: should we add the sender node ID to the routing table ?
-        #       Please note that adding the sender node ID to the routing table may cause infinite loop!
-        #       => A priori, we should not add the sender node ID to the routing table.
-
+        # Add the sender node to the routing table and dump the routing table.
+        self.__add_node_id_to_routing_table(message.sender_id, message.request_id)
+        data = RoutingTableData(response.uid, self.__local_node_id, self.__routing_table.dump())
+        Logger.log_data(data.to_json(), "__process_find_node")
         return True
 
     def __process_ping_node_response(self, message: PingNodeResponse) -> bool:
@@ -330,3 +326,20 @@ class Node:
         data = RoutingTableData(message.uid, self.__local_node_id, self.__routing_table.dump())
         Logger.log_data(data.to_json(), "process_ping_node_response")
         return True
+
+    ####################################################################################################################
+    # Utilities                                                                                                        #
+    ####################################################################################################################
+
+    def __add_node_id_to_routing_table(self, node_id_to_add: NodeId, message_request_id: MessageRequestId) -> None:
+        """
+        Add a node ID to the routing table.
+        :param node_id_to_add: the node ID to add.
+        :param message_request_id: the ID of the message that motivated the node ID addition. Please note that this value is only used for logging purposes.
+        """
+        added, already_in, bucket_idx = self.__routing_table.add_node(node_id_to_add)
+        print("{0:04d}> [{1:08d}] Node added: <{2:s}>.".format(self.__local_node_id,
+                                                               message_request_id,
+                                                               "yes" if added else "no"))
+        if not added and not already_in:
+            self.__ping_for_replacement(bucket_idx, node_id_to_add, message_request_id)

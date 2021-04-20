@@ -1,5 +1,5 @@
 from typing import Dict, Any
-from kad_types import NodeId, MessageId
+from kad_types import NodeId, MessageRequestId
 from message.message import Message, MessageName
 
 
@@ -8,7 +8,7 @@ class FindNode(Message):
     This class represents a FIND_NODE message.
     """
 
-    def __init__(self, uid: int, sender_id: NodeId, recipient_id: NodeId, request_id: MessageId,
+    def __init__(self, uid: int, sender_id: NodeId, recipient_id: NodeId, request_id: MessageRequestId,
                  node_to_find_id: NodeId):
         """
         Create a new FIND_NODE message

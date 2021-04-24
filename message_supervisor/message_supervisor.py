@@ -76,35 +76,35 @@ class MessageSupervisor(ABC):
             if not again:
                 break
 
-    def _add(self, message_id: MessageRequestId, expiration_timestamp: Timestamp, args: List[Any]) -> None:
+    def _add(self, request_id: MessageRequestId, expiration_timestamp: Timestamp, args: List[Any]) -> None:
         """
         Add a message to the supervisor responsibility.
-        :param message_id: the message to add.
+        :param request_id: the request ID of the message to add.
         :param expiration_timestamp: the message expiration date. After this date, it is considered
         that the message has not been answered.
         :param args: the arguments to pass to the callback function that is executed on a message if
         the expiry date for this message has passed.
         """
-        if message_id in self.__messages:
-            raise Exception("Unexpected error: the message ID {0:d} is already in use! Please note that this error "
-                            "should not happen.".format(message_id))
         with self.__lock:
-            self.__messages[message_id] = (expiration_timestamp, args)
+            if request_id in self.__messages:
+                raise Exception("Unexpected error: the message ID {0:d} is already in use! Please note that this error "
+                                "should not happen.".format(request_id))
+            self.__messages[request_id] = (expiration_timestamp, args)
 
-    def _get(self, message_id: MessageRequestId, auto_remove: bool) -> Optional[List[Any]]:
+    def _get(self, request_id: MessageRequestId, auto_remove: bool) -> Optional[List[Any]]:
         """
         Get the arguments that must be given to a callback function designed to process an unanswered message.
-        :param message_id: the ID of the message that must be given to a callback function.
+        :param request_id:the request ID of the message that must be given to a callback function.
         :param auto_remove: flag that tells whether the message should be suppressed from the message repository
         or not once the arguments are returned. The value True triggers the suppression of the message.
         :return: the arguments that must be given to the callback function designed to process the (unanswered) message.
         """
         with self.__lock:
             data: Optional[List[Any]] = None
-            if message_id in self.__messages:
-                data = self.__messages[message_id][1]
+            if request_id in self.__messages:
+                data = self.__messages[request_id][1]
                 if auto_remove:
-                    del self.__messages[message_id]
+                    del self.__messages[request_id]
             return data
 
     def _del(self, message_id: MessageRequestId) -> None:

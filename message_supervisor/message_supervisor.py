@@ -50,12 +50,7 @@ class MessageSupervisor(ABC):
         If it finds unanswered PING messages, then it executes the given callback (`self.__messages`).
         """
         while True:
-
-            # Please note that you should wait prior to any other treatment.
-            # Indeed, if you look for unanswered messages immediately, then the
-
             sleep(self.__clean_period)
-
             to_remove: List[MessageRequestId] = []
             with self.__lock:
 

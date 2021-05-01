@@ -1,12 +1,20 @@
-from typing import Tuple, List, Optional
-from time import time
+from typing import Tuple, List, Optional, Dict
 from random import randint
-from math import floor
+from math import floor, ceil
+from time import time
 from threading import RLock
 from kad_config import KadConfig
 from bucket import Bucket
 from node_data import NodeData
-from kad_types import NodeId, BucketMask, BucketIndex
+from kad_types import NodeId, BucketMask, BucketIndex, MessageRequestId, Timestamp
+from message.message import Message, MessageAction
+from message.ping_node import PingNode
+from message.ping_node_reponse import PingNodeResponse
+from message_supervisor.ping import Ping as PingSupervisor
+from uid import Uid
+from queue_manager import QueueManager
+from queue import Queue
+from logger import Logger
 
 
 class RoutingTable:
@@ -14,10 +22,39 @@ class RoutingTable:
     def __init__(self, identifier: NodeId, config: KadConfig):
         self.__config = config
         self.__identifier = identifier
-        self.__lock = RLock()
-        # Create "config.id_length" k-buckets. Each k-bucket contains "config.k" node IDs.
-        self.__buckets: Tuple[Bucket] = tuple(Bucket(config.k) for _ in range(config.id_length))
+        self.__buckets_lock = RLock()
+        self.__buckets: Tuple[Bucket, ...] = tuple(Bucket(config.k) for _ in range(config.id_length))
+        """The k-buckets."""
+        self.__insertion_pools: Tuple[Dict[NodeId, None], ...] = tuple({} for _ in range(config.id_length))
+        """The pools used to store node IDs waiting for being inserted into the k-buckets."""
         self.__bucket_masks: Tuple[BucketMask] = self.__init_bucket_masks()
+        self.__ping_supervisor = PingSupervisor(self.__thread_ping_no_response)
+        """This component periodically checks the status of the PING requests: have they received responses ?"""
+
+    def __thread_ping_no_response(self, message: PingNode, replacement_node_id: NodeId) -> None:
+        """
+        Treat the absence of response from a node. Please note that if a node failed to respond to a PING, then it
+        is evicted from the k-bucket and it is replaced by the most recently seen node (that is, the node we just
+        learned about).
+
+        Please note:
+        - the method will be executed by the PING supervisor.
+        - the method will be executed as a thread.
+
+        :param message: the PING message. Please keep in mind that this message is the one that has been sent by
+        the local node! This is **NOT** a received message. Thus, the node to evict is the target node!
+        :param replacement_node_id: the ID of the node that must be used to replace the node that does not respond
+        to the PING. Please note that this is "the node we just learned about".
+        """
+        print("{0:04d}> Execute the callback function for PING messages that did not receive a response: "
+              "{1:s}. Replacement node: {2:d}".format(self.identifier, message.to_str(), replacement_node_id))
+
+        # Please keep in mind that this message is the one that has been sent by the local node! This is
+        # **NOT** a received message. Thus, the node to evict is the target node!
+
+        node_to_evict: NodeId = message.recipient
+        self.__evict_node(node_to_evict)
+        self.add_node(replacement_node_id)
 
     def __init_bucket_masks(self) -> Tuple[BucketMask]:
         """
@@ -91,7 +128,7 @@ class RoutingTable:
         Otherwise the method returns the value -1. Please note that the only node that cannot be stored into a bucket
         is the local node.
         """
-        with self.__lock:
+        with self.__buckets_lock:
             index: int = -1
             for i in range(self.__config.id_length):
                 if not ((identifier >> i) ^ self.__bucket_masks[i]):
@@ -99,25 +136,22 @@ class RoutingTable:
                     break
             return index
 
-    def add_node(self, node_id: NodeId) -> Tuple[bool, bool, BucketIndex]:
+    def add_node(self, node_id: NodeId, message: Optional[Message] = None) -> None:
         """
         Add a node to the routing table.
+
+        Please note that the node may be inserted immediately or not.
+        - if the target k-bucket if not full, then the node is immediately inserted.
+        - otherwise, we send a PING message to the least recently seen node within the k-bucket.
+          - if the k-bucket least recently node responds to the PING message, then the given node ID is not inserted.
+          - otherwise, the k-bucket least recently node is evicted (from the k-bucket) and the given node ID is
+            inserted (becoming, the most recently seen node).
+
         :param node_id: the ID of the node to add. Please note that this node must not be the local node!
-        :return: the method returns 3 values:
-        - the first value tells whether the node has been added to the routing table or not. The value True means that
-          the node has been added to the routing table. The value False means that the peer has not been added to the
-          routing table.
-        - in case the node has **NOT** been added to the routing table (the first value is False), the second value
-          tells whether the node was already present in the routing table or not. The value True means that the peer
-          was already present in the routing table. The value False means that the node was absent from the bucket.
-          This means that the bucket was full.
-        - the third value represents the index of the bucket in which the node has been added to, or would have been
-          added to (if room was available in the bucket, or if the node was not already present in the routing table).
-
-        Please note that it is important to test the following return composition:
-        (False, False,...): this means that the node could not be added to the routing table because the destination
-        bucket was full.
-
+        :param message: if the request for a node insertion results from the reception of a message, then this
+        parameter value should be set to the message that triggered the request. Please note that the only
+        situation when an insertion request is not the result of a message reception is when the well-known
+        "origin" node is inserted (this should be the first node inserted into the routing table).
         :raise Exception: if the given node is the local node.
         """
         if node_id == self.__identifier:
@@ -126,10 +160,21 @@ class RoutingTable:
         # Please note: the returned value (bucket_index) is greater than or equal to zero.
         # Indeed, the only node that cannot be added to the routing table is the local peer.
         # Yet, this case has already been handled.
-        with self.__lock:
+        with self.__buckets_lock:
             bucket_index = self.__find_bucket_index(node_id)
             added, already_in = self.__buckets[bucket_index].add_node(NodeData(node_id, last_seen_date=floor(time())))
-            return added, already_in, BucketIndex(bucket_index)
+
+            if message is None:
+                # The only time we go through this branch is when the well-known "origin" node is inserted.
+                # In this case, the routing table is empty since this node is the first to be inserted.
+                return
+
+            # Do we need to ping the k-bucket least recently seen node?
+            if not added and not already_in:
+                # The node has not been added to the routing table. And the reason why it had not
+                # been added is not because it already was in. Therefore the k-bucket was full and the node
+                # was not in the k-bucket. We ping the least recently seen node from the k-bucket.
+                self.__ping_for_replacement(bucket_index, node_id, message.request_id)
 
     def find_closest(self, node_id: NodeId, count: int) -> List[NodeId]:
         """
@@ -138,38 +183,38 @@ class RoutingTable:
         :param count: the maximum number of node IDs to return.
         :return: the list of node IDs that are the closest ones to the given one.
         """
-        with self.__lock:
+        with self.__buckets_lock:
             ids: List[NodeId] = []
             for bucket in self.__buckets:
                 ids.extend(bucket.get_all_nodes_ids())
             return sorted(ids, key=lambda pid: node_id ^ pid)[0: count]
 
-    def get_least_recently_seen(self, bucket_id: int) -> Optional[NodeId]:
+    def __get_least_recently_seen(self, bucket_id: int) -> Optional[NodeId]:
         # The methods of class Bucket are synchronized.
         bucket: Bucket = self.__buckets[bucket_id]
         return bucket.get_least_recently_seen()
 
-    def set_least_recently_seen(self, node_id: NodeId, bucket_idx: Optional[int] = None) -> None:
+    def __set_least_recently_seen(self, node_id: NodeId, bucket_idx: Optional[int] = None) -> None:
         """
         Declare a given node as the least recently seen node.
         :param node_id: the node ID to declare.
         :param bucket_idx: the index of the bucket that contains the node.
         If this parameter is not specified, then the method will find out the bucket index.
         """
-        with self.__lock:
+        with self.__buckets_lock:
             if not bucket_idx:
                 bucket_idx = self.__find_bucket_index(node_id)
             bucket: Bucket = self.__buckets[bucket_idx]
             bucket.set_least_recently_seen(node_id)
 
-    def evict_node(self, node_id: NodeId, bucket_idx: Optional[int] = None) -> None:
+    def __evict_node(self, node_id: NodeId, bucket_idx: Optional[int] = None) -> None:
         """
         Evict a node from a bucket.
         :param node_id: The ID of the node to evict.
         :param bucket_idx: the index of the bucket that contains the node.
         If this parameter is not specified, then the method will find out the bucket index.
         """
-        with self.__lock:
+        with self.__buckets_lock:
             if bucket_idx is None:
                 bucket_idx = self.__find_bucket_index(node_id)
             bucket: Bucket = self.__buckets[bucket_idx]
@@ -215,12 +260,72 @@ class RoutingTable:
             v = v | (randint(0, 1) << i)
         return v
 
+    def stop(self) -> None:
+        """
+        Stop the execution of all threads used to maintain the routing table.
+        """
+        self.__ping_supervisor.stop()
+
+    def notify_ping_response(self, message: PingNodeResponse) -> None:
+        """
+        This method must be called whenever the response to a PING message is received.
+        It notifies the routing table that a node responded to a PING message.
+
+        Please note that the message processing loop is implemented outside of this object.
+
+        :param message: the message that contains the response for the PING message.
+        """
+        self.__ping_supervisor.delete(message.request_id)
+        self.__set_least_recently_seen(message.sender_id)
+
+    def __ping_for_replacement(self,
+                               bucket_idx: int,
+                               new_node_to_insert_id: NodeId,
+                               message_request_id: MessageRequestId) -> None:
+        """
+        Ping a node in the context when we try to insert a new node into a full bucket.
+        In this context, the procedure is the following:
+        - we take the least recently seen node in the bucket.
+        - we ping thus node (the least recently seen).
+          * if the least recently seen node fails to respond to the PING message, then we evict it from
+            the bucket and we insert the new node.
+          * if the least recently seen node responds to the PING message, then we discard the new node
+            and the least recently seen node becomes the most recently seen node.
+        :param bucket_idx: the index of the bucket we want to insert the new node into.
+        :param new_node_to_insert_id: the ID of the new node (to insert into the bucket).
+        :param message_request_id: the request ID of the message that triggered this action. Please note that
+        this value is only used for logging purposes.
+        """
+        uid = Uid.uid()
+        least_recently_seen_node_id: NodeId = self.__get_least_recently_seen(bucket_idx)
+        # Ping the least recently node.
+        message = PingNode(uid=uid,
+                           sender_id=self.__identifier,
+                           recipient_id=least_recently_seen_node_id,
+                           request_id=Message.get_new_request_id())
+        target_queue: Queue = QueueManager.get_queue(least_recently_seen_node_id)
+        if target_queue is None:
+            # This means that the target node does not exist anymore.
+            print("{0:04d}> [{1:08d}] The queue for node {2:d} does not exist.".format(self.__identifier,
+                                                                                       message_request_id,
+                                                                                       least_recently_seen_node_id))
+            self.__thread_ping_no_response(message, new_node_to_insert_id)
+            return
+        print("{0:04d}> [{1:08d}] {2:s}".format(self.__identifier, message_request_id, message.to_str()))
+        Logger.log_message(message, MessageAction.SEND, "ping_for_replacement")
+        message.send()
+        # Please don't forget to add the timeout duration to the timestamp
+        # (expiration_data = nox + timeout_duration)
+        self.__ping_supervisor.add(message,
+                                   Timestamp(ceil(time()) + self.__config.message_ping_node_timeout),
+                                   new_node_to_insert_id)
+
     def __repr__(self) -> str:
         """
         Return a textual representation of the routing table.
         :return: a textual representation of the routing table.
         """
-        with self.__lock:
+        with self.__buckets_lock:
             representation: List[str] = [('RT for {0:0%db}' % self.__config.id_length).format(self.__identifier),
                                          '  Bucket masks:']
             for i in range(self.__config.id_length):
@@ -236,7 +341,7 @@ class RoutingTable:
             return "\n".join(representation)
 
     def dump(self) -> str:
-        with self.__lock:
+        with self.__buckets_lock:
             counts: List[str] = []
             for i in range(self.__config.id_length):
                 bucket: Bucket = self.__buckets[i]

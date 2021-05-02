@@ -1,4 +1,4 @@
-from threading import Thread, Lock
+from threading import Thread, Lock, RLock
 from time import sleep, time
 from typing import Dict, Tuple, List, Any, Optional, Callable
 from kad_types import MessageRequestId, Timestamp
@@ -38,38 +38,40 @@ class MessageSupervisor(ABC):
         """
         self.__clean_period: int = clean_period
         self.__callback: Optional[Callable] = callback
-        self.__messages: Dict[MessageRequestId, Tuple[Timestamp, List[Any]]] = {}
-        self.__lock = Lock()
-        self.__continue = True
-        self.__cleaner_thread: Thread = Thread(target=self.__cleaner, args=[])
-        self.__cleaner_thread.start()
+        self.__shared_messages: Dict[MessageRequestId, Tuple[Timestamp, List[Any]]] = {}
+        self.__shared_continue = True
+        self.__lock_messages = Lock()
+        self.__lock_continue = RLock()
+        self.__start_threads()
 
-    def __cleaner(self) -> None:
+    def __start_threads(self) -> None:
+        Thread(target=self.__thread_cleaner).start()
+
+    def __thread_cleaner(self) -> None:
         """
         The "cleaner thread": this thread periodically looks for unanswered PING messages.
         If it finds unanswered PING messages, then it executes the given callback (`self.__messages`).
         """
         while True:
-            sleep(self.__clean_period)
             to_remove: List[MessageRequestId] = []
-            with self.__lock:
+            with self.__lock_messages:
 
                 # Please note: you cannot modify the size of a dictionary while iterating it.
-                for message_id in self.__messages.keys():
-                    if self.__messages[message_id][0] < time():
+                for message_id in self.__shared_messages.keys():
+                    if self.__shared_messages[message_id][0] < time():
                         to_remove.append(message_id)
 
                 for message_id in to_remove:
-                    args: List[Any] = self.__messages[message_id][1]
-                    del self.__messages[message_id]
+                    args: List[Any] = self.__shared_messages[message_id][1]
+                    del self.__shared_messages[message_id]
                     if self.__callback is not None:
                         post_process = Thread(target=self.__callback, args=args)
                         post_process.start()
 
-            with self.__lock:
-                again = self.__continue
-            if not again:
-                break
+            sleep(self.__clean_period)
+            with self.__lock_continue:
+                if not self.__shared_continue:
+                    break
 
     def _add(self, request_id: MessageRequestId, expiration_timestamp: Timestamp, args: List[Any]) -> None:
         """
@@ -80,11 +82,11 @@ class MessageSupervisor(ABC):
         :param args: the arguments to pass to the callback function that is executed on a message if
         the expiry date for this message has passed.
         """
-        with self.__lock:
-            if request_id in self.__messages:
+        with self.__lock_messages:
+            if request_id in self.__shared_messages:
                 raise Exception("Unexpected error: the message ID {0:d} is already in use! Please note that this error "
                                 "should not happen.".format(request_id))
-            self.__messages[request_id] = (expiration_timestamp, args)
+            self.__shared_messages[request_id] = (expiration_timestamp, args)
 
     def _get(self, request_id: MessageRequestId, auto_remove: bool) -> Optional[List[Any]]:
         """
@@ -94,12 +96,12 @@ class MessageSupervisor(ABC):
         or not once the arguments are returned. The value True triggers the suppression of the message.
         :return: the arguments that must be given to the callback function designed to process the (unanswered) message.
         """
-        with self.__lock:
+        with self.__lock_messages:
             data: Optional[List[Any]] = None
-            if request_id in self.__messages:
-                data = self.__messages[request_id][1]
+            if request_id in self.__shared_messages:
+                data = self.__shared_messages[request_id][1]
                 if auto_remove:
-                    del self.__messages[request_id]
+                    del self.__shared_messages[request_id]
             return data
 
     def _del(self, message_id: MessageRequestId) -> None:
@@ -107,16 +109,16 @@ class MessageSupervisor(ABC):
         Remove a message from the supervisor responsibility.
         :param message_id: the ID of the message to remove.
         """
-        with self.__lock:
-            if message_id in self.__messages:
-                del self.__messages[message_id]
+        with self.__lock_messages:
+            if message_id in self.__shared_messages:
+                del self.__shared_messages[message_id]
 
     def stop(self) -> None:
         """
         Stop the supervisor.
         """
-        with self.__lock:
-            self.__continue = False
+        with self.__lock_continue:
+            self.__shared_continue = False
 
     @abstractmethod
     def add(self,

@@ -14,24 +14,24 @@ class Bucket:
 
     def __init__(self, size_limit: int):
         self.__size_limit = size_limit
-        self.__nodes: Dict[NodeId, NodeData] = dict()
-        self.__lock = RLock()
+        self.__shared_nodes: Dict[NodeId, NodeData] = dict()
+        self.__lock_nodes = RLock()
 
     def contains_node(self, identifier: NodeId) -> bool:
-        with self.__lock:
-            return identifier in self.__nodes
+        with self.__lock_nodes:
+            return identifier in self.__shared_nodes
 
     def count(self) -> int:
-        with self.__lock:
-            return len(self.__nodes)
+        with self.__lock_nodes:
+            return len(self.__shared_nodes)
 
     def get_all_nodes_data(self) -> List[NodeData]:
-        with self.__lock:
-            return list(self.__nodes.values())
+        with self.__lock_nodes:
+            return list(self.__shared_nodes.values())
 
     def get_all_nodes_ids(self) -> List[NodeId]:
-        with self.__lock:
-            return [p.identifier for p in self.__nodes.values()]
+        with self.__lock_nodes:
+            return [p.identifier for p in self.__shared_nodes.values()]
 
     def get_closest_nodes(self, node_id: NodeId, count: int) -> List[NodeData]:
         """
@@ -41,10 +41,10 @@ class Bucket:
         :return: the function returns the list of nodes that are the closest to the one which identifier has
         been given.
         """
-        with self.__lock:
+        with self.__lock_nodes:
             result: List[NodeData] = []
-            if len(self.__nodes):
-                result = sorted(self.__nodes.values(), key=lambda node: node.identifier ^ node_id)[0:count]
+            if len(self.__shared_nodes):
+                result = sorted(self.__shared_nodes.values(), key=lambda node: node.identifier ^ node_id)[0:count]
             return result
 
     def add_node(self, node_data: NodeData) -> Tuple[bool, bool]:
@@ -57,14 +57,14 @@ class Bucket:
         - the second value indicates whether the node was already present in the bucket prior to the request to
           add it, or not. The value True means hat the node was already present to the bucket.
         """
-        with self.__lock:
+        with self.__lock_nodes:
             if self.contains_node(node_data.identifier):
                 return False, True
 
-            if len(self.__nodes) == self.__size_limit:
+            if len(self.__shared_nodes) == self.__size_limit:
                 return False, False
 
-            self.__nodes[node_data.identifier] = node_data
+            self.__shared_nodes[node_data.identifier] = node_data
             return True, False
 
     def remove_node(self, node: Union[NodeId, NodeData]) -> None:
@@ -72,11 +72,11 @@ class Bucket:
         Evict a node from the bucket.
         :param node: the node, or node iD, to evict.
         """
-        with self.__lock:
+        with self.__lock_nodes:
             identifier = node.identifier if isinstance(node, NodeData) else node
             if not self.contains_node(identifier):
                 raise Exception('Unexpected node identifier "{0:d}". It should be in the k-bucket.'.format(identifier))
-            del self.__nodes[identifier]
+            del self.__shared_nodes[identifier]
 
     def get_most_recently_seen(self) -> Optional[NodeId]:
         """
@@ -84,9 +84,9 @@ class Bucket:
         :return: If the k-bucket is not empty, then the method returns the ID of the most recently seen node it
         contains. Otherwise, it returns the value None.
         """
-        with self.__lock:
-            if len(self.__nodes):
-                data: NodeData = sorted(self.__nodes.values(), key=attrgetter('last_seen_date'))[-1]
+        with self.__lock_nodes:
+            if len(self.__shared_nodes):
+                data: NodeData = sorted(self.__shared_nodes.values(), key=attrgetter('last_seen_date'))[-1]
                 return data.identifier
             return None
 
@@ -96,17 +96,17 @@ class Bucket:
         :return: If the k-bucket is not empty, then the method returns the ID of the least recently seen node it
         contains. Otherwise, it returns the value None.
         """
-        with self.__lock:
-            if len(self.__nodes):
-                data = sorted(self.__nodes.values(), key=attrgetter('last_seen_date'))[0]
+        with self.__lock_nodes:
+            if len(self.__shared_nodes):
+                data = sorted(self.__shared_nodes.values(), key=attrgetter('last_seen_date'))[0]
                 return data.identifier
             return None
 
-    def set_least_recently_seen(self, node_id: NodeId) -> None:
-        with self.__lock:
-            if node_id in self.__nodes:
-                self.__nodes[node_id].last_seen_date = ceil(time())
+    def set_most_recently_seen(self, node_id: NodeId) -> None:
+        with self.__lock_nodes:
+            if node_id in self.__shared_nodes:
+                self.__shared_nodes[node_id].last_seen_date = ceil(time())
 
     def __str__(self) -> str:
-        with self.__lock:
-            return ", ".join(p.__str__() for p in self.__nodes.values())
+        with self.__lock_nodes:
+            return ", ".join(p.__str__() for p in self.__shared_nodes.values())

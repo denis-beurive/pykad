@@ -6,12 +6,14 @@ class KadConfig:
                  alpha=3,
                  k=20,
                  message_find_node_timeout: int = 3,
-                 message_ping_node_timeout: int = 3):
+                 message_ping_node_timeout: int = 3,
+                 inserter_scanner_period: int = 1):
         self.__id_length: int = id_length
         self.__alpha: int = alpha
         self.__k: int = k
         self.__message_find_node_timeout: int = message_find_node_timeout
         self.__message_ping_node_timeout: int = message_ping_node_timeout
+        self.__inserter_scanner_period: int = inserter_scanner_period
 
     @property
     def id_length(self) -> int:
@@ -62,3 +64,11 @@ class KadConfig:
     @message_ping_node_timeout.setter
     def message_ping_node_timeout(self, value: int) -> None:
         self.__message_ping_node_timeout = value
+
+    @property
+    def inserter_scanner_period(self) -> int:
+        return self.__inserter_scanner_period
+
+    @inserter_scanner_period.setter
+    def inserter_scanner_period(self, value: int) -> None:
+        self.__inserter_scanner_period = value

@@ -21,38 +21,6 @@ class Ping(MessageSupervisor):
 
                  In this case, if the k-bucket that would be used to store the newly discovered node ID is full,
                  then we send a PING request to the least recently seen node of the k-bucket.
-
-                 The following situations may arise:
-
-                 (1) let say that 3 new node IDs that would be stored in the same k-bucket are discovered
-                     "simultaneously" (or within a short period of time).
-
-                     If we don't take precautions, then we would send 3 PING requests to the same "least
-                     recently node". Not only, there is no point in sending "simultaneously" multiple PING
-                     requests to the same node, but this action would needlessly increase the network traffic
-                     between nodes.
-
-                (2) remember that node discovery results from any incoming requests. This means that the same
-                    node may be discovered multiple times "simultaneously" (or within a short period of time).
-
-                    In this case, the new discovered node must be inserted only once into a k-bucket. Indeed,
-                    once a node has been inserted in a k-bucket, then it is not new anymore...
-
-                From (1) and (2), we implement the following algorithm:
-
-                - one "node ID FIFO" is assigned to each k-bucket. In reality we use dictionaries (see last note),
-                  however, for the sake of clarity, we stick with the FIFO for the following description.
-                - when a (new) node ID is discovered, we determine the k-bucket that would be used to store it.
-                - if the (new) node ID is already present in the k-bucket FIFO, then the node ID is not inserted
-                  (twice) into the FIFO. Otherwise, the (new) node ID is inserted into the FIFO. This takes care
-                  of (2).
-                - only one node from a given k-bucket is "pinged" at a time. From another point of view (the FIFO
-                  point of view): node IDs in a k-bucket FIFO are processed one after the other. This takes care
-                  of (1).
-
-                Note: the order of the node IDs within k-bucket FIFOs does not matter. Thus, instead of FIFOs, we
-                used dictionaries to store node IDs (because the only thing that matters is to be able to determine
-                whether a given node ID has already been scheduled for "possible" insertion into the k-bucket).
     """
 
     def __init__(self, callback: Optional[Callable]):

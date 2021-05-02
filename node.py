@@ -19,7 +19,6 @@ from uid import Uid
 from data.routing_table import RoutingTable as RoutingTableData
 
 
-
 class Node:
     """
     This class implement a Kademlia node.
@@ -63,14 +62,14 @@ class Node:
         """This property associates a type of message with a method used to process it."""
 
         # Locks and shared resources
-        self.__connected_lock = Lock()
-        self.__connected: bool = True
+        self.__lock_connected = Lock()
+        self.__shared_connected: bool = True
         """Flag that determines whether the local node is connected or not.
         Disconnected nodes don't respond to messages."""
 
         # Create the threads.
-        self.__listener_thread: Thread = Thread(target=self.__listener, args=[])
-        self.__cron_thread: Thread = Thread(target=self.__cron, args=[])
+        self.__listener_thread: Thread = Thread(target=self.__thread_listener, args=[])
+        self.__cron_thread: Thread = Thread(target=self.__thread_cron, args=[])
 
         # Bootstrap the node (it it is not the origin node).
         if not self.__is_origin:
@@ -95,6 +94,9 @@ class Node:
         return NodeData(identifier=self.__local_node_id)
 
     def run(self) -> None:
+        self.__start_thread()
+
+    def __start_thread(self) -> None:
         self.__listener_thread.start()
         self.__cron_thread.start()
 
@@ -114,7 +116,7 @@ class Node:
     # Threads                                                                                                          #
     ####################################################################################################################
 
-    def __listener(self) -> None:
+    def __thread_listener(self) -> None:
         """
         Listen to messages from other nodes.
 
@@ -130,8 +132,8 @@ class Node:
 
             # Execute the suitable message handler.
             processor: Callable = self.__messages_processor[message.message_name]
-            with self.__connected_lock:
-                if self.__connected:
+            with self.__lock_connected:
+                if self.__shared_connected:
                     if not processor(message):
                         break
                 else:
@@ -139,7 +141,7 @@ class Node:
                         if not processor(message):
                             break
 
-    def __cron(self) -> None:
+    def __thread_cron(self) -> None:
         """
         Execute periodic tasks.
         """
@@ -157,14 +159,14 @@ class Node:
 
     def __process_disconnect_node(self, message: DisconnectNode) -> bool:
         print("{0:04d}> [{1:08d}] DISCONNECT_NODE.".format(self.__local_node_id, message.request_id))
-        with self.__connected_lock:
-            self.__connected = False
+        with self.__lock_connected:
+            self.__shared_connected = False
         return True
 
     def __process_reconnect_node(self, message: ReconnectNode) -> bool:
         print("{0:04d}> [{1:08d}] RECONNECT_NODE.".format(self.__local_node_id, message.request_id))
-        with self.__connected_lock:
-            self.__connected = True
+        with self.__lock_connected:
+            self.__shared_connected = True
         return True
 
     def __process_find_node(self, message: FindNode) -> bool:

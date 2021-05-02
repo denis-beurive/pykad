@@ -40,8 +40,8 @@ class Message(ABC):
     - a request ID.
     """
 
-    __lock: Lock = Lock()
-    __request_id_reference: int = 0
+    __lock_request_id_reference = Lock()
+    __shared_request_id_reference: int = 0
     """Global variable used to generate unique request IDs."""
     __name_enum_to_str: Dict[MessageName, str] = {
         MessageName.FIND_NODE: "FIND_NODE",
@@ -97,9 +97,9 @@ class Message(ABC):
         Generate a new unique request ID.
         :return: a new unique request ID.
         """
-        with Message.__lock:
-            Message.__request_id_reference += 1
-            return MessageRequestId(Message.__request_id_reference)
+        with Message.__lock_request_id_reference:
+            Message.__shared_request_id_reference += 1
+            return MessageRequestId(Message.__shared_request_id_reference)
 
     @staticmethod
     def name_to_type(name: str) -> MessageType:

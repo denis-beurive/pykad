@@ -3,29 +3,33 @@
 In order to allow quick referencing of the elements involved in the synchronization operations,
 we apply naming conventions.
 
-Class and methods:
+# Class and methods
 
 * All thread function names start with the prefix `__thread_`.
 * All classes that starts threads implement a method called `__start_theads`.
 
-List of threads: 
+# Threads 
 
-* **Class** `message_supervisor.message_supervisor.MessageSupervisor`
-  * `message_supervisor.message_supervisor.MessageSupervisor.__thread_cleaner`
-* **Class** `node.Node`
-  * `node.Node.__thread_listener`
-  * `node.Node.__thread_cron`
-* **Class** `routing_table.RoutingTable`
-  * `routing_table.RoutingTable.__thread_inserter`
-
-List of shared resources:
+* Node (`node.Node`):
+   * Message listener: wait for messages from other nodes.
+   * CRON: perform periodic node maintenance tasks.
+* Message supervisor (`message_supervisor.message_supervisor.MessageSupervisor`):
+   * Message cleaner: periodically look for unanswered messages, and perform
+     appropriate actions on these messages by calling a cleaner function, executed 
+     as a thread. 
+   * Cleaner function: see above description for the message cleaner. 
+* Routing table (`routing_table.RoutingTable`):
+   * Node inserter: periodically scans the insertion queues in
+     order to find nodes that are waiting for potential insertion into k-buckets.
+     
+# Resources and locks
 
 * All locks have names that begin with `__lock_`.
 * All shared variables have names that begin with `__shared_`.
 
 # Using RLock
 
-RLocks (for _re-rentrant_) must be used if the following situation may occur:
+RLocks (for _re-entrant_) must be used if the following situation may occur:
 
 ![](images/rlock.png)
 

@@ -75,9 +75,7 @@ class RoutingTable:
         """This component periodically checks the status of the PING requests: have they received responses ?"""
         self.__shared_continue = True
         self.__lock_buckets = RLock()
-        self.__lock_insertion_pools = RLock()
         self.__lock_continue = RLock()
-        self.__lock_insertion_pools_busy = RLock()
         self.__start_threads()
 
     def __start_threads(self) -> None:
@@ -105,10 +103,11 @@ class RoutingTable:
         # **NOT** a received message. Thus, the node to evict is the target node!
 
         node_to_evict: NodeId = message.recipient
-        self.__evict_node(node_to_evict)
-        self.add_node(replacement_node_id)
-        bucket_id = self.__find_bucket_index(node_to_evict)
-        self.__set_bucket_insertion_pool_as_available(bucket_id)
+        with self.__lock_buckets:
+            self.__evict_node(node_to_evict)
+            self.add_node(replacement_node_id)
+            bucket_id = self.__find_bucket_index(node_to_evict)
+            self.__shared_insertion_pools_busy_flags[bucket_id] = False
 
     def __thread_inserter(self) -> None:
         """
@@ -116,7 +115,7 @@ class RoutingTable:
         potential insertion into k-buckets.
         """
         while True:
-            with self.__lock_insertion_pools:
+            with self.__lock_buckets:
                 bucket_id: BucketIndex
                 for bucket_id in range(len(self.__shared_insertion_pools)):
                     if self.__shared_insertion_pools_busy_flags[bucket_id]:
@@ -128,7 +127,7 @@ class RoutingTable:
                         # Pop an item chosen at random.
                         node_id, request_id = list(pool.items()).pop()
                         # Ping the least recently seen node from the k-bucket (and, eventually, replace it).
-                        self.__set_bucket_insertion_pool_as_busy(bucket_id)
+                        self.__shared_insertion_pools_busy_flags[bucket_id] = True
                         self.__ping_for_replacement(bucket_id, node_id, request_id)
 
             sleep(self.__config.inserter_scanner_period)
@@ -136,13 +135,8 @@ class RoutingTable:
                 if not self.__shared_continue:
                     break
 
-    def __set_bucket_insertion_pool_as_busy(self, bucket_id: BucketIndex) -> None:
-        with self.__lock_insertion_pools_busy:
-            self.__shared_insertion_pools_busy_flags[bucket_id] = True
-
     def __set_bucket_insertion_pool_as_available(self, bucket_id: BucketIndex) -> None:
-        with self.__lock_insertion_pools_busy:
-            self.__shared_insertion_pools_busy_flags[bucket_id] = False
+        self.__shared_insertion_pools_busy_flags[bucket_id] = False
 
     def __init_bucket_masks(self) -> Tuple[BucketMask]:
         """
@@ -221,13 +215,12 @@ class RoutingTable:
         the value None. Please note that the only node ID that cannot be stored into a bucket is the
         ID of the local node.
         """
-        with self.__lock_buckets:
-            index: Optional[BucketIndex] = None
-            for i in range(self.__config.id_length):
-                if not ((identifier >> i) ^ self.__bucket_masks[i]):
-                    index = BucketIndex(i)
-                    break
-            return index
+        index: Optional[BucketIndex] = None
+        for i in range(self.__config.id_length):
+            if not ((identifier >> i) ^ self.__bucket_masks[i]):
+                index = BucketIndex(i)
+                break
+        return index
 
     def add_node(self, node_id: NodeId, message: Optional[Message] = None) -> None:
         """
@@ -264,20 +257,22 @@ class RoutingTable:
             bucket_index = self.__find_bucket_index(node_id)
             added, already_in = self.__shared_buckets[bucket_index].add_node(NodeData(node_id, last_seen_date=floor(time())))
 
-        if message is None:
-            # The only time we go through this branch is when the well-known "origin" node is inserted.
-            # In this case, the routing table is empty since this node is the first to be inserted.
-            return
+            if message is None:
+                # The only time we go through this branch is when the well-known "origin" node is inserted.
+                # In this case, the routing table is empty since this node is the first to be inserted.
+                return
 
-        # We may need to add the node ID to the appropriate insertion queue.
-        if not added and not already_in:
-            with self.__lock_insertion_pools:
+            # We may need to add the node ID to the appropriate insertion queue.
+            if not added and not already_in:
                 if node_id not in self.__shared_insertion_pools[bucket_index]:
                     self.__shared_insertion_pools[bucket_index][node_id] = message.request_id
 
     def find_closest(self, node_id: NodeId, count: int) -> List[NodeId]:
         """
         Find the closest nodes to a given node.
+
+        NOTE: this function accesses the k-buckets. But it takes care of the synchronisation.
+
         :param node_id: the ID of the node.
         :param count: the maximum number of node IDs to return.
         :return: the list of node IDs that are the closest ones to the given one.
@@ -310,15 +305,19 @@ class RoutingTable:
     def __evict_node(self, node_id: NodeId, bucket_idx: Optional[int] = None) -> None:
         """
         Evict a node from a bucket.
+
+        WARNING: precautions must be taken while calling this function!
+                 You must acquire the lock that synchronizes the access to the k-buckets prior
+                 to calling the method.
+
         :param node_id: The ID of the node to evict.
         :param bucket_idx: the index of the bucket that contains the node.
         If this parameter is not specified, then the method will find out the bucket index.
         """
-        with self.__lock_buckets:
-            if bucket_idx is None:
-                bucket_idx = self.__find_bucket_index(node_id)
-            bucket: Bucket = self.__shared_buckets[bucket_idx]
-            bucket.remove_node(node_id)
+        if bucket_idx is None:
+            bucket_idx = self.__find_bucket_index(node_id)
+        bucket: Bucket = self.__shared_buckets[bucket_idx]
+        bucket.remove_node(node_id)
 
     def get_random_node_id_within_bucket(self, bucket_index: BucketIndex) -> NodeId:
         """

@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Callable
+from typing import Optional, Dict, Callable, List
 from threading import Thread, Lock
 from queue import Queue
 from kad_types import NodeId, MessageRequestId
@@ -69,7 +69,10 @@ class Node:
 
         # Create the threads.
         self.__listener_thread: Thread = Thread(target=self.__thread_listener, args=[])
+        """Wait for messages from other nodes."""
         self.__cron_thread: Thread = Thread(target=self.__thread_cron, args=[])
+        """Perform periodic node maintenance tasks."""
+
 
         # Bootstrap the node (it it is not the origin node).
         if not self.__is_origin:
@@ -189,7 +192,7 @@ class Node:
 
         # Forge a response with the same message ID and send it.
         uid = Uid.uid()
-        closest = self.__routing_table.find_closest(message.node_id, self.__config.id_length)
+        closest: List[NodeId] = self.__routing_table.find_closest(message.node_id, self.__config.id_length)
         response = FindNodeResponse(uid, self.__local_node_id, sender_id, message_id, closest)
         response.send()
 

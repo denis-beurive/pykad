@@ -60,7 +60,7 @@ class Ping(MessageSupervisor):
         # First element: the ID of the replacement node.
         # Second element: the function to execute if the pinged node does not respond.
         data: Optional[Tuple[PingNode, Optional[NodeId]]] = super()._get(message_id, auto_remove)
-        return None if data is None else data
+        return data
 
     def delete(self, message_id: MessageRequestId) -> None:
         """

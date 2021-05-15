@@ -8,7 +8,7 @@ Generate PlantUML sequence diagram specification:
 
     python log2plantuml.py --db=<path to the database> > <file.puml>
 
-Generate the
+Generate the graphical representation of the sequence diagram:
 
     SET PLANTUML="C:\Users\Denis BEURIVE\Documents\software\plantuml.jar"
     java -jar %PLANTUML% <file.puml>

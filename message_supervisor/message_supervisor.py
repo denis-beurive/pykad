@@ -49,8 +49,8 @@ class MessageSupervisor(ABC):
 
     def __thread_cleaner(self) -> None:
         """
-        The "cleaner thread": this thread periodically looks for unanswered PING messages.
-        If it finds unanswered PING messages, then it executes the given callback (`self.__messages`).
+        The "cleaner thread": this thread periodically looks for unanswered messages.
+        If it finds unanswered messages, then it executes the given callback (`self.__callback`).
         """
         while True:
             to_remove: List[MessageRequestId] = []

@@ -2,6 +2,7 @@
 
 set PWD=%~dp0
 
+set PLANTUML_LIMIT_SIZE=20000
 SET PLANTUML="C:\Users\Denis BEURIVE\Documents\software\plantuml.jar"
 
 python "%PWD%log2db.py" --log="%PWD%..\kad.txt" --db="%PWD%data\kad.db"

@@ -1,5 +1,8 @@
+from typing import Dict, Any
+from loggable import Loggable
 
-class KadConfig:
+
+class KadConfig(Loggable):
 
     def __init__(self,
                  id_length=128,
@@ -72,3 +75,11 @@ class KadConfig:
     @inserter_scanner_period.setter
     def inserter_scanner_period(self, value: int) -> None:
         self.__inserter_scanner_period = value
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'log-type': 'config',
+            'id_length': self.id_length,
+            'alpha': self.alpha,
+            'k': self.k
+        }

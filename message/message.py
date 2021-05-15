@@ -1,11 +1,12 @@
 from typing import Optional, Dict, Any
-from abc import ABC, abstractmethod
+from abc import ABC
 from kad_types import MessageRequestId, NodeId
 from enum import Enum
 from queue import Queue
 from queue_manager import QueueManager
 from json import dumps
 from lock import ExtLock
+from loggable import Loggable
 
 
 class MessageName(Enum):
@@ -28,7 +29,7 @@ class MessageAction(Enum):
     RECEIVE = "receive"
 
 
-class Message(ABC):
+class Message(Loggable, ABC):
     """
     This class is the base class for all classes that implement messages.
     All messages contains the following properties:
@@ -186,14 +187,6 @@ class Message(ABC):
             'recipient_id': self.__recipient_id,
             'args': self.__args
         }
-
-    @abstractmethod
-    def to_dict(self) -> Dict[str, Any]:
-        """
-        Generate a key/value pairs representation of the message.
-        :return: a dictionary that represents the message.
-        """
-        pass
 
     def to_json(self) -> str:
         """

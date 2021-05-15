@@ -1,4 +1,5 @@
-from typing import Tuple, List, Optional, Dict
+from typing import Tuple, List, Optional, Dict, Pattern, Match, Any
+import re
 from random import randint
 from math import floor, ceil
 from time import time, sleep
@@ -16,9 +17,10 @@ from queue_manager import QueueManager
 from queue import Queue
 from logger import Logger
 from lock import ExtRLock
+from loggable import Loggable
 
 
-class RoutingTable:
+class RoutingTable(Loggable):
     """
     This class implement the routing table.
 
@@ -453,3 +455,13 @@ class RoutingTable:
                 if bucket.count():
                     counts.append("{0:d}:[{1:s}]".format(i, ",".join([str(n) for n in bucket.get_all_nodes_ids()])))
             return "{" + " ".join(counts) + "}"
+
+    def to_dict(self) -> Dict[str, Any]:
+        result: Dict[str, Any] = {'log-type': 'routing_table'}
+        val: Dict[str, Any] = {}
+        for i in range(self.__config.k):
+            bucket: Bucket = self.__shared_buckets[i]
+            if bucket.count():
+                val[str(i)] = bucket.get_all_nodes_ids()
+        result['data'] = val
+        return result

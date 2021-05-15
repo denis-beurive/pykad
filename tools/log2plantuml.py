@@ -12,6 +12,9 @@ Please note that a message is logged in these 2 situations only:
            |                            |
           LOG                        NOT LOG
 
+    Messages are represented by:
+
+        [request ID] <message name> <args>
 """
 
 from typing import Dict, Optional, List, Any

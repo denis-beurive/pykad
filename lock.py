@@ -8,14 +8,18 @@ class BaseLock(object):
     """
 
     __lock_fd: RLock = RLock()
-    __shared_fd: TextIO = None
+    __shared_fd: Optional[TextIO] = None
+    __enabled: bool = True
 
     @staticmethod
-    def init(path: str) -> None:
-        BaseLock.__shared_fd = open(path, "w")
+    def init(path: str, enabled: bool = True) -> None:
+        BaseLock.__shared_fd = open(path, "w") if enabled else None
+        BaseLock.__enabled = enabled
 
     @staticmethod
     def log(message: str) -> None:
+        if not BaseLock.__enabled:
+            return
         with BaseLock.__lock_fd:
             BaseLock.__shared_fd.write(message + "\n")
 
@@ -28,7 +32,7 @@ class BaseLock(object):
         """
         self.__locker: Optional[str] = None
         self.__resource: Optional[str] = in_resource
-        self._lock: Union[Lock, RLock] = in_lock
+        self.__lock: Union[Lock, RLock] = in_lock
 
     @property
     def locker(self) -> Optional[str]:
@@ -67,23 +71,29 @@ class BaseLock(object):
         return self
 
     def acquire(self):
-        self._lock.acquire()
+        self.__lock.acquire()
 
     def release(self):
-        self._lock.release()
+        self.__lock.release()
 
     def __enter__(self):
-        BaseLock.log('"{}: {}" acquires "{}"'.format(get_ident(), self.locker if self.locker is not None else "locker is not set",
-                                                     self.resource if self.resource is not None else "resource is not set"))
+        if BaseLock.__enabled:
+            BaseLock.log('"{}: {}" acquires "{}"'.format(get_ident(), self.locker if self.locker is not None else "locker is not set",
+                                                         self.resource if self.resource is not None else "resource is not set"))
         self.acquire()
 
     def __exit__(self, type, value, traceback):
-        BaseLock.log('"{}: {}" releases "{}"'.format(get_ident(), self.locker if self.locker is not None else "locker is not set",
-                                                     self.resource if self.resource is not None else "resource is not set"))
+        if BaseLock.__enabled:
+            BaseLock.log('"{}: {}" releases "{}"'.format(get_ident(), self.locker if self.locker is not None else "locker is not set",
+                                                         self.resource if self.resource is not None else "resource is not set"))
         self.release()
 
 
 class ExtLock(BaseLock):
+
+    @staticmethod
+    def init(path: str, enabled: bool = True) -> None:
+        BaseLock.init(path, enabled)
 
     def __init__(self, in_resource: Optional[str] = None):
         super().__init__(Lock(), in_resource)
@@ -91,8 +101,9 @@ class ExtLock(BaseLock):
 
 class ExtRLock(BaseLock):
 
+    @staticmethod
+    def init(path: str, enabled: bool = True) -> None:
+        BaseLock.init(path, enabled)
+
     def __init__(self, in_resource: Optional[str] = None):
         super().__init__(RLock(), in_resource)
-
-
-

@@ -113,6 +113,7 @@ class Node:
         data = RoutingTableData(uid, self.__local_node_id, self.__routing_table.dump())
         Logger.log_message(message, MessageAction.SEND, "terminate")
         Logger.log_data(data.to_json(), "terminate")
+        Logger.log_rt(self.__local_node_id, self.__routing_table, "terminate")
         message.send()
 
     ####################################################################################################################

@@ -1,9 +1,10 @@
-from threading import Thread, Lock, RLock
+from threading import Thread
 from time import sleep, time
 from typing import Dict, Tuple, List, Any, Optional, Callable
 from kad_types import MessageRequestId, Timestamp
 from abc import ABC, abstractmethod
 from message.message import Message, NodeId
+from lock import ExtLock, ExtRLock
 
 
 class MessageSupervisor(ABC):
@@ -40,8 +41,8 @@ class MessageSupervisor(ABC):
         self.__callback: Optional[Callable] = callback
         self.__shared_messages: Dict[MessageRequestId, Tuple[Timestamp, List[Any]]] = {}
         self.__shared_continue = True
-        self.__lock_messages = Lock()
-        self.__lock_continue = RLock()
+        self.__lock_messages = ExtLock("MessageSupervisor.messages")
+        self.__lock_continue = ExtRLock("MessageSupervisor.continue")
         self.__start_threads()
 
     def __start_threads(self) -> None:
@@ -54,7 +55,7 @@ class MessageSupervisor(ABC):
         """
         while True:
             to_remove: List[MessageRequestId] = []
-            with self.__lock_messages:
+            with self.__lock_messages.set("message_supervisor.message_supervisor.MessageSupervisor.__thread_cleaner"):
 
                 # Please note: you cannot modify the size of a dictionary while iterating it.
                 for message_id in self.__shared_messages.keys():
@@ -69,7 +70,7 @@ class MessageSupervisor(ABC):
                         post_process.start()
 
             sleep(self.__clean_period)
-            with self.__lock_continue:
+            with self.__lock_continue.set("message_supervisor.message_supervisor.MessageSupervisor.__thread_cleaner"):
                 if not self.__shared_continue:
                     break
 
@@ -82,7 +83,7 @@ class MessageSupervisor(ABC):
         :param args: the arguments to pass to the callback function that is executed on a message if
         the expiry date for this message has passed.
         """
-        with self.__lock_messages:
+        with self.__lock_messages.set("message_supervisor.message_supervisor.MessageSupervisor._add"):
             if request_id in self.__shared_messages:
                 raise Exception("Unexpected error: the message ID {0:d} is already in use! Please note that this error "
                                 "should not happen.".format(request_id))
@@ -96,7 +97,7 @@ class MessageSupervisor(ABC):
         or not once the arguments are returned. The value True triggers the suppression of the message.
         :return: the arguments that must be given to the callback function designed to process the (unanswered) message.
         """
-        with self.__lock_messages:
+        with self.__lock_messages.set("message_supervisor.message_supervisor.MessageSupervisor._get"):
             data: Optional[List[Any]] = None
             if request_id in self.__shared_messages:
                 data = self.__shared_messages[request_id][1]
@@ -109,7 +110,7 @@ class MessageSupervisor(ABC):
         Remove a message from the supervisor responsibility.
         :param message_id: the ID of the message to remove.
         """
-        with self.__lock_messages:
+        with self.__lock_messages.set("message_supervisor.message_supervisor.MessageSupervisor._del"):
             if message_id in self.__shared_messages:
                 del self.__shared_messages[message_id]
 
@@ -117,7 +118,7 @@ class MessageSupervisor(ABC):
         """
         Stop the supervisor.
         """
-        with self.__lock_continue:
+        with self.__lock_continue.set("message_supervisor.message_supervisor.MessageSupervisor.stop"):
             self.__shared_continue = False
 
     @abstractmethod

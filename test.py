@@ -1,12 +1,13 @@
 from typing import List
+from time import sleep
+from random import randint
 from kad_config import KadConfig
 from kad_types import NodeId
 from node import Node
 from logger import Logger
-from time import sleep
-from random import randint
+from lock import ExtLock
 
-
+ExtLock.init("locks.txt")
 Logger.init("kad.txt")
 conf: KadConfig = KadConfig(id_length=8, alpha=3, k=3)
 

@@ -2,7 +2,7 @@ from typing import Tuple, List, Optional, Dict
 from random import randint
 from math import floor, ceil
 from time import time, sleep
-from threading import RLock, Lock, Thread
+from threading import Thread
 from kad_config import KadConfig
 from bucket import Bucket
 from node_data import NodeData
@@ -15,6 +15,7 @@ from uid import Uid
 from queue_manager import QueueManager
 from queue import Queue
 from logger import Logger
+from lock import ExtRLock
 
 
 class RoutingTable:
@@ -74,12 +75,12 @@ class RoutingTable:
         self.__ping_supervisor = PingSupervisor(self.__thread_ping_no_response)
         """This component periodically checks the status of the PING requests: have they received responses ?"""
         self.__shared_continue = True
-        self.__lock_buckets = RLock()
-        self.__lock_continue = RLock()
+        self.__lock_buckets = ExtRLock("RoutingTable.buckets")
+        self.__lock_continue = ExtRLock("RoutingTable.continue")
         self.__start_threads()
 
     def __start_threads(self) -> None:
-        Thread(self.__thread_inserter()).start()
+        Thread(target=self.__thread_inserter).start()
 
     def __thread_ping_no_response(self, message: PingNode, replacement_node_id: NodeId) -> None:
         """
@@ -103,7 +104,7 @@ class RoutingTable:
         # **NOT** a received message. Thus, the node to evict is the target node!
 
         node_to_evict: NodeId = message.recipient
-        with self.__lock_buckets:
+        with self.__lock_buckets.set("__thread_ping_no_response"):
             self.__evict_node(node_to_evict)
             self.add_node(replacement_node_id)
             bucket_id = self.__find_bucket_index(node_to_evict)
@@ -115,7 +116,7 @@ class RoutingTable:
         potential insertion into k-buckets.
         """
         while True:
-            with self.__lock_buckets:
+            with self.__lock_buckets.set("routing_table.RoutingTable.__thread_inserter"):
                 bucket_id: BucketIndex
                 for bucket_id in range(len(self.__shared_insertion_pools)):
                     if self.__shared_insertion_pools_busy_flags[bucket_id]:
@@ -131,7 +132,7 @@ class RoutingTable:
                         self.__ping_for_replacement(bucket_id, node_id, request_id)
 
             sleep(self.__config.inserter_scanner_period)
-            with self.__lock_continue:
+            with self.__lock_continue.set("routing_table.RoutingTable.__thread_inserter"):
                 if not self.__shared_continue:
                     break
 
@@ -253,7 +254,7 @@ class RoutingTable:
         # Please note: the returned value (bucket_index) is greater than or equal to zero.
         # Indeed, the only node that cannot be added to the routing table is the local peer.
         # Yet, this case has already been handled.
-        with self.__lock_buckets:
+        with self.__lock_buckets.set("routing_table.RoutingTable.add_node"):
             bucket_index = self.__find_bucket_index(node_id)
             added, already_in = self.__shared_buckets[bucket_index].add_node(NodeData(node_id, last_seen_date=floor(time())))
 
@@ -277,7 +278,7 @@ class RoutingTable:
         :param count: the maximum number of node IDs to return.
         :return: the list of node IDs that are the closest ones to the given one.
         """
-        with self.__lock_buckets:
+        with self.__lock_buckets.set("routing_table.RoutingTable.find_closest"):
             ids: List[NodeId] = []
             for bucket in self.__shared_buckets:
                 ids.extend(bucket.get_all_nodes_ids())
@@ -296,7 +297,7 @@ class RoutingTable:
         :param bucket_idx: the index of the bucket that contains the node.
         If this parameter is not specified, then the method will find out the bucket index.
         """
-        with self.__lock_buckets:
+        with self.__lock_buckets.set("routing_table.RoutingTable.__set_most_recently_seen"):
             if bucket_idx is None:
                 bucket_idx = self.__find_bucket_index(node_id)
             bucket: Bucket = self.__shared_buckets[bucket_idx]
@@ -363,7 +364,7 @@ class RoutingTable:
         """
         Stop the execution of all threads used to maintain the routing table.
         """
-        with self.__lock_continue:
+        with self.__lock_continue.set("routing_table.RoutingTable.stop"):
             self.__shared_continue = False
         self.__ping_supervisor.stop()
 
@@ -429,7 +430,7 @@ class RoutingTable:
         Return a textual representation of the routing table.
         :return: a textual representation of the routing table.
         """
-        with self.__lock_buckets:
+        with self.__lock_buckets.set("routing_table.RoutingTable.__repr__"):
             representation: List[str] = [('RT for {0:0%db}' % self.__config.id_length).format(self.__identifier),
                                          '  Bucket masks:']
             for i in range(self.__config.id_length):
@@ -445,7 +446,7 @@ class RoutingTable:
             return "\n".join(representation)
 
     def dump(self) -> str:
-        with self.__lock_buckets:
+        with self.__lock_buckets.set("routing_table.RoutingTable.dump"):
             counts: List[str] = []
             for i in range(self.__config.id_length):
                 bucket: Bucket = self.__shared_buckets[i]

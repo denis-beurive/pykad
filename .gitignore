@@ -152,4 +152,5 @@ fabric.properties
 
 *.db
 kad.txt
+locks.txt
 

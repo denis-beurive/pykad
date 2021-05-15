@@ -1,5 +1,5 @@
 from typing import Optional, Dict, Callable, List
-from threading import Thread, Lock
+from threading import Thread
 from queue import Queue
 from kad_types import NodeId, MessageRequestId
 from node_data import NodeData
@@ -17,6 +17,7 @@ from queue_manager import QueueManager
 from logger import Logger
 from uid import Uid
 from data.routing_table import RoutingTable as RoutingTableData
+from lock import ExtLock
 
 
 class Node:
@@ -62,7 +63,7 @@ class Node:
         """This property associates a type of message with a method used to process it."""
 
         # Locks and shared resources
-        self.__lock_connected = Lock()
+        self.__lock_connected = ExtLock("Node.connected")
         self.__shared_connected: bool = True
         """Flag that determines whether the local node is connected or not.
         Disconnected nodes don't respond to messages."""
@@ -73,10 +74,9 @@ class Node:
         self.__cron_thread: Thread = Thread(target=self.__thread_cron, args=[])
         """Perform periodic node maintenance tasks."""
 
-
         # Bootstrap the node (it it is not the origin node).
         if not self.__is_origin:
-            print("{0:04d}> Bootstrap".format(self.__local_node_id))
+            print("{0:04d}> Bootstrap".format(self.__local_node_id), flush=True)
             self.__boostrap_message_id = self.__bootstrap()
 
     def __bootstrap(self) -> MessageRequestId:
@@ -135,7 +135,7 @@ class Node:
 
             # Execute the suitable message handler.
             processor: Callable = self.__messages_processor[message.message_name]
-            with self.__lock_connected:
+            with self.__lock_connected.set("__thread_listener"):
                 if self.__shared_connected:
                     if not processor(message):
                         break
@@ -162,13 +162,13 @@ class Node:
 
     def __process_disconnect_node(self, message: DisconnectNode) -> bool:
         print("{0:04d}> [{1:08d}] DISCONNECT_NODE.".format(self.__local_node_id, message.request_id))
-        with self.__lock_connected:
+        with self.__lock_connected.set("node.Node.__process_disconnect_node"):
             self.__shared_connected = False
         return True
 
     def __process_reconnect_node(self, message: ReconnectNode) -> bool:
         print("{0:04d}> [{1:08d}] RECONNECT_NODE.".format(self.__local_node_id, message.request_id))
-        with self.__lock_connected:
+        with self.__lock_connected.set("node.Node.__process_reconnect_node"):
             self.__shared_connected = True
         return True
 

@@ -2,10 +2,10 @@ from typing import Optional, Dict, Any
 from abc import ABC, abstractmethod
 from kad_types import MessageRequestId, NodeId
 from enum import Enum
-from threading import Lock
 from queue import Queue
 from queue_manager import QueueManager
 from json import dumps
+from lock import ExtLock
 
 
 class MessageName(Enum):
@@ -40,7 +40,7 @@ class Message(ABC):
     - a request ID.
     """
 
-    __lock_request_id_reference = Lock()
+    __lock_request_id_reference = ExtLock("Message.request_id_reference")
     __shared_request_id_reference: int = 0
     """Global variable used to generate unique request IDs."""
     __name_enum_to_str: Dict[MessageName, str] = {
@@ -97,7 +97,7 @@ class Message(ABC):
         Generate a new unique request ID.
         :return: a new unique request ID.
         """
-        with Message.__lock_request_id_reference:
+        with Message.__lock_request_id_reference.set("message.message.Message.get_new_request_id"):
             Message.__shared_request_id_reference += 1
             return MessageRequestId(Message.__shared_request_id_reference)
 

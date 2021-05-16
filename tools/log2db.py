@@ -1,4 +1,4 @@
-from typing import Optional, List, Pattern, Match
+from typing import Optional, Pattern, Match
 import sqlite3
 import argparse
 import os

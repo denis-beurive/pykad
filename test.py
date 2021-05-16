@@ -9,10 +9,11 @@ from lock import ExtLock
 
 ExtLock.init("locks.txt", enabled=False)
 Logger.init("kad.txt")
+
+origin_id: NodeId = NodeId(0)
 conf: KadConfig = KadConfig(id_length=8, alpha=3, k=3)
 Logger.log_config(conf)
 
-origin_id: NodeId = NodeId(0)
 origin = Node(NodeId(origin_id), conf)
 origin.run()
 

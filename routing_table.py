@@ -459,9 +459,8 @@ class RoutingTable(Loggable):
     def to_dict(self) -> Dict[str, Any]:
         result: Dict[str, Any] = {'log-type': 'routing_table'}
         val: Dict[str, Any] = {}
-        for i in range(self.__config.k):
+        for i in range(self.__config.id_length):
             bucket: Bucket = self.__shared_buckets[i]
-            if bucket.count():
-                val[str(i)] = bucket.get_all_nodes_ids()
+            val[str(i)] = bucket.get_all_nodes_ids()
         result['data'] = val
         return result
